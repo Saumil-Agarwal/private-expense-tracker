@@ -1,0 +1,31 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+
+const migrationsDir = join(process.cwd(), "supabase", "migrations");
+
+function migrationSql(): string {
+  const migration = readdirSync(migrationsDir).find((file) => file.endsWith("_initial_expense_schema.sql"));
+  if (!migration) throw new Error("Initial expense migration does not exist");
+  return readFileSync(join(migrationsDir, migration), "utf8").toLowerCase();
+}
+
+describe("Supabase expense schema", () => {
+  it("enables RLS on every user-owned table", () => {
+    const sql = migrationSql();
+    const tables = ["profiles", "accounts", "categories", "people", "groups", "group_members", "transactions", "transaction_items", "allocations", "merchant_rules", "telegram_updates"];
+    for (const table of tables) {
+      expect(sql).toContain(`alter table public.${table} enable row level security`);
+    }
+  });
+
+  it("keeps anonymous clients away from financial tables", () => {
+    const sql = migrationSql();
+    expect(sql).toContain("revoke all on all tables in schema public from anon");
+    expect(sql).not.toMatch(/create policy[\s\S]+to anon/);
+  });
+
+  it("creates a security-invoker monthly summary", () => {
+    expect(migrationSql()).toContain("with (security_invoker = true)");
+  });
+});
