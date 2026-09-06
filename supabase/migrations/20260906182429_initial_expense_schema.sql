@@ -1,7 +1,7 @@
 create extension if not exists pgcrypto;
 
 create table public.profiles (
-  id uuid primary key references auth.users(id) on delete cascade,
+  id uuid primary key default gen_random_uuid(),
   telegram_user_id bigint unique not null,
   display_name text not null default 'Owner',
   created_at timestamptz not null default now()

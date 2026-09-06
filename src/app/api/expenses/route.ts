@@ -26,7 +26,15 @@ export async function POST(request: Request) {
     if (error || !transaction) throw error ?? new Error("Transaction was not created");
     if (expense.allocations.length) {
       const { data: me } = await supabase.from("people").upsert({ user_id: userId, name: "Me", is_owner: true }, { onConflict: "user_id,name" }).select("id").single();
-      const rows = expense.allocations.map((allocation) => ({ user_id: userId, transaction_id: transaction.id, person_id: allocation.personId === "me" ? me?.id : allocation.personId, amount_paise: allocation.amountPaise }));
+      const participantIds = new Map<string, string>();
+      if (me?.id) participantIds.set("me", me.id as string);
+      for (const allocation of expense.allocations.filter((item) => item.personId.startsWith("name:"))) {
+        const name = allocation.personId.slice(5);
+        const { data: person, error: personError } = await supabase.from("people").upsert({ user_id: userId, name }, { onConflict: "user_id,name" }).select("id").single();
+        if (personError || !person) throw personError ?? new Error("Participant could not be saved");
+        participantIds.set(allocation.personId, person.id as string);
+      }
+      const rows = expense.allocations.map((allocation) => ({ user_id: userId, transaction_id: transaction.id, person_id: participantIds.get(allocation.personId) ?? allocation.personId, amount_paise: allocation.amountPaise }));
       const { error: allocationError } = await supabase.from("allocations").insert(rows);
       if (allocationError) { await supabase.from("transactions").delete().eq("id", transaction.id); throw allocationError; }
     }

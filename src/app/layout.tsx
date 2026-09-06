@@ -19,7 +19,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body><Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" /><TelegramProvider>{children}</TelegramProvider></body>
+      <body><Script src="https://telegram.org/js/telegram-web-app.js" strategy="afterInteractive" /><TelegramProvider>{children}</TelegramProvider></body>
     </html>
   );
 }
