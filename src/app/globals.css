@@ -43,6 +43,7 @@ h1 { font-size: clamp(50px, 8vw, 96px); line-height: .96; letter-spacing: -.065e
 }
 
 button, input, textarea, select { font: inherit; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 button { cursor: pointer; }
 .app-shell { width: min(820px, calc(100% - 28px)); margin: 0 auto; padding: 42px 0 110px; min-height: 100vh; }
 .app-header { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; margin-bottom: 28px; }
@@ -76,6 +77,14 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .field-grid input, .field-grid select { margin-top: 6px; color: var(--ink); }
 .save-button { width: calc(100% - 48px); margin: 20px 24px 24px; }
 .form-message { margin: 0; padding: 0 24px 24px; color: #52604f; }
+.paste-hint { display: flex; align-items: center; gap: 6px; margin: 8px 2px 0; color: var(--muted); font-size: 12px; }
+.model-badge { padding: 6px 9px; border-radius: 999px; background: #eff8df; color: #466044; font-size: 11px; white-space: nowrap; }
+.receipt-review h3 { margin: 20px 0 8px; font-size: 14px; }
+.receipt-items, .allocation-list { list-style: none; padding: 0; margin: 0; }
+.receipt-items li, .allocation-list li { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 10px 0; border-bottom: 1px solid #e8e8df; }
+.receipt-items li:last-child, .allocation-list li:last-child { border-bottom: 0; }
+.receipt-items span { display: flex; align-items: center; gap: 7px; }
+.receipt-items small { color: #466044; background: #eff8df; border-radius: 999px; padding: 3px 6px; }
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .app-nav { position: fixed; z-index: 10; bottom: 18px; left: 50%; transform: translateX(-50%); background: rgba(21,34,25,.94); color: white; border-radius: 16px; display: flex; padding: 7px; gap: 4px; box-shadow: 0 12px 34px rgba(10,20,12,.22); }
