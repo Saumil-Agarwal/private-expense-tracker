@@ -1,7 +1,7 @@
 "use client";
 
 import { type ClipboardEvent, useState } from "react";
-import { Camera, Check, ClipboardPaste, LoaderCircle, Sparkles } from "lucide-react";
+import { Camera, Check, ClipboardPaste, LoaderCircle, Sparkles, X } from "lucide-react";
 
 import { ConfirmedExpenseSchema, formatInr, type ExpenseDraft } from "@/domain/expense";
 import { extractReceiptText } from "@/inference/ocr";
@@ -9,6 +9,8 @@ import { parseExpenseText } from "@/inference/parser";
 import { createOnDeviceExtractor } from "@/inference/web-model";
 import type { ReceiptResult } from "@/inference/receipt";
 import { SplitEditor } from "./split-editor";
+import { GroupPicker, type ExpenseGroup } from "./group-picker";
+import { UnlockForm } from "./unlock-form";
 
 const categories = ["Restaurants", "Uber", "Cab", "Groceries", "Supermarkets", "Amazon groceries", "Internet", "Gifts", "Badminton game", "Bus", "Shows", "Flight", "Electricity", "Trip", "Activities", "Maid"];
 
@@ -19,8 +21,12 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [receipt, setReceipt] = useState<ReceiptResult | null>(null);
+  const [images, setImages] = useState<File[]>([]);
+  const [group, setGroup] = useState<ExpenseGroup | null>(null);
+  const [locked, setLocked] = useState(false);
 
   async function extract(useModel = false) {
+    if (images.length > 0) return readReceipts();
     setBusy(true); setMessage("");
     try {
       setDraft(useModel ? await createOnDeviceExtractor().extract({ text }) : parseExpenseText(text));
@@ -28,12 +34,12 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
     finally { setBusy(false); }
   }
 
-  async function readReceipt(file?: File) {
-    if (!file) return;
+  async function readReceipts() {
+    if (images.length === 0) return;
     setBusy(true); setMessage("Reading receipt with local Ollama…"); setReceipt(null);
     try {
       const form = new FormData();
-      form.set("image", file);
+      images.forEach((image) => form.append("images", image));
       form.set("instructions", text);
       const response = await fetch("/api/inference/receipt", { method: "POST", body: form });
       if (!response.ok) throw new Error((await response.json()).error ?? "Ollama could not read the receipt");
@@ -43,7 +49,7 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
       setMessage(result.warning ?? "Receipt read locally. Check the items and split before saving.");
     } catch (ollamaError) {
       try {
-        const receiptText = await extractReceiptText(file);
+        const receiptText = (await Promise.all(images.map((image) => extractReceiptText(image)))).join("\n\n");
         setText(receiptText); setDraft(parseExpenseText(receiptText));
         setMessage(`${ollamaError instanceof Error ? ollamaError.message : "Ollama unavailable"} Used on-device OCR instead; please check the result.`);
       } catch { setMessage("Automatic reading failed. Open Ollama or type the expense below."); }
@@ -52,21 +58,22 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
   }
 
   function pasteReceipt(event: ClipboardEvent<HTMLTextAreaElement>) {
-    const image = [...event.clipboardData.items].find((item) => item.kind === "file" && item.type.startsWith("image/"))?.getAsFile();
-    if (!image) return;
+    const pasted = [...event.clipboardData.items].filter((item) => item.kind === "file" && item.type.startsWith("image/")).map((item) => item.getAsFile()).filter((file): file is File => Boolean(file));
+    if (!pasted.length) return;
     event.preventDefault();
-    void readReceipt(image);
+    setImages((current) => [...current, ...pasted].slice(0, 10));
   }
 
   async function save() {
     if (!draft) return;
     setBusy(true); setMessage("");
     try {
-      const payload = ConfirmedExpenseSchema.parse({ ...draft, ...split });
+      const payload = ConfirmedExpenseSchema.parse({ ...draft, ...split, groupId: group?.id });
       const initData = window.Telegram?.WebApp?.initData ?? "";
       const response = await fetch("/api/expenses", { method: "POST", headers: { "content-type": "application/json", "x-telegram-init-data": initData }, body: JSON.stringify(payload) });
+      if (response.status === 401) { setLocked(true); throw new Error("Unlock your ledger to save this expense."); }
       if (!response.ok) throw new Error((await response.json()).error ?? "Save failed");
-      setMessage("Expense saved."); setText(""); setDraft(null); setReceipt(null);
+      setMessage("Expense saved."); setText(""); setDraft(null); setReceipt(null); setImages([]);
     } catch (error) { setMessage(error instanceof Error ? error.message : "Save failed"); }
     finally { setBusy(false); }
   }
@@ -77,10 +84,11 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
       <label className="sr-only" htmlFor="expense-input">Expense details and split instructions</label>
       <textarea id="expense-input" aria-label="Expense details and split instructions" value={text} onPaste={pasteReceipt} onChange={(event) => setText(event.target.value)} placeholder="Paste a receipt, or type: biscuits are for me; split the rest with 201" rows={4} />
       <p className="paste-hint"><ClipboardPaste size={15} /> Paste a screenshot here, or choose a receipt image.</p>
+      {images.length > 0 && <ul className="image-queue" aria-label="Queued screenshots">{images.map((image, index) => <li key={`${image.name}-${index}`}><span>{image.name}</span><button type="button" aria-label={`Remove ${image.name}`} onClick={() => setImages((current) => current.filter((_, itemIndex) => itemIndex !== index))}><X size={14} /></button></li>)}</ul>}
       <div className="entry-actions">
-        <button className="button-primary" type="button" disabled={!text.trim() || busy} onClick={() => extract(false)}>{busy ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}Create draft</button>
+        <button className="button-primary" type="button" disabled={(!text.trim() && images.length === 0) || busy} onClick={() => extract(false)}>{busy ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}Create draft</button>
         <button className="button-quiet" type="button" disabled={!text.trim() || busy} onClick={() => extract(true)}>Use on-device model</button>
-        <label className="button-quiet"><Camera size={17} />Choose receipt<input type="file" accept="image/*" hidden onChange={(event) => readReceipt(event.target.files?.[0])} /></label>
+        <label className="button-quiet"><Camera size={17} />Choose receipts<input type="file" accept="image/*" multiple hidden onChange={(event) => setImages((current) => [...current, ...Array.from(event.target.files ?? [])].slice(0, 10))} /></label>
       </div>
     </section>
     {draft && <>
@@ -88,12 +96,13 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
         <div className="section-heading"><div><span className="step">2</span><h2>Check the details</h2></div><strong>{formatInr(draft.amountPaise)}</strong></div>
         <div className="field-grid"><label>Merchant<input value={draft.merchant} onChange={(event) => setDraft({ ...draft, merchant: event.target.value })} /></label><label>Date<input type="date" value={draft.date} onChange={(event) => setDraft({ ...draft, date: event.target.value })} /></label><label>Category<select value={draft.category ?? ""} onChange={(event) => setDraft({ ...draft, category: event.target.value })}><option value="">Uncategorized</option>{categories.map((category) => <option key={category}>{category}</option>)}</select></label></div>
       </section>
+      {locked ? <UnlockForm onUnlocked={() => { setLocked(false); setMessage("Ledger unlocked. Confirm and save again."); }} /> : <GroupPicker onSelect={setGroup} onUnauthorized={() => setLocked(true)} />}
       {receipt && <section className="form-section receipt-review">
         <div className="section-heading"><div><span className="step">3</span><h2>Receipt items</h2></div><span className="model-badge">Qwen 3.5 9B (local Ollama)</span></div>
         <ul className="receipt-items">{receipt.items.map((item, index) => <li key={`${item.name}-${index}`}><span>{item.name}{item.personal && <small>Only me</small>}</span><strong>{formatInr(item.amountPaise)}</strong></li>)}</ul>
         {receipt.allocations.length > 0 && <><h3>Proposed allocation</h3><ul className="allocation-list">{receipt.allocations.map((allocation) => <li key={allocation.personId}><span>{receipt.people.find((person) => person.id === allocation.personId)?.name ?? allocation.personId}</span><strong>{formatInr(allocation.amountPaise)}</strong></li>)}</ul></>}
       </section>}
-      <SplitEditor amountPaise={draft.amountPaise} people={receipt?.people ?? [{ id: "me", name: "Me" }]} onChange={setSplit} />
+      <SplitEditor key={`${draft.amountPaise}-${group?.id ?? "none"}`} amountPaise={draft.amountPaise} people={group?.people ?? receipt?.people ?? [{ id: "me", name: "Me" }]} onChange={setSplit} />
       <button className="save-button" type="button" onClick={save} disabled={busy}><Check size={18} />Confirm and save</button>
     </>}
     {message && <p className="form-message" role="status">{message}</p>}

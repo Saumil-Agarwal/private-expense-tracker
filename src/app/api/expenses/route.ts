@@ -2,11 +2,11 @@ import { NextResponse } from "next/server";
 
 import { ConfirmedExpenseSchema } from "@/domain/expense";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { authenticateTelegramRequest } from "@/server/auth";
+import { authenticateOwnerRequest } from "@/server/auth";
 import { toTransactionInsert } from "@/server/ledger";
 
 async function owner(request: Request) {
-  const telegramId = authenticateTelegramRequest(request);
+  const telegramId = authenticateOwnerRequest(request);
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("profiles")
@@ -53,8 +53,14 @@ export async function POST(request: Request) {
 export async function GET(request: Request) {
   try {
     const { userId, supabase } = await owner(request);
-    const { data, error } = await supabase.from("transactions").select("id,occurred_on,merchant,amount_paise,status,categories(name)").eq("user_id", userId).order("occurred_on", { ascending: false }).limit(100);
+    const url = new URL(request.url);
+    let query = supabase.from("transactions").select("id,occurred_on,merchant,amount_paise,status,categories(name),groups(id,name),allocations(amount_paise,people(name))").eq("user_id", userId);
+    const from = url.searchParams.get("from"); const to = url.searchParams.get("to");
+    if (from) query = query.gte("occurred_on", from);
+    if (to) query = query.lte("occurred_on", to);
+    const { data, error } = await query.order("occurred_on", { ascending: false }).limit(100);
     if (error) throw error;
-    return NextResponse.json({ transactions: data });
+    type TransactionRow = { allocations?: Array<{ amount_paise: number; people?: { name: string } | null }>; [key: string]: unknown };
+    return NextResponse.json({ transactions: ((data ?? []) as unknown as TransactionRow[]).map((transaction) => ({ ...transaction, allocations: (transaction.allocations ?? []).map((allocation) => ({ person: allocation.people?.name ?? "Unknown", amount_paise: allocation.amount_paise })) })) });
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Unauthorized" }, { status: 401 }); }
 }

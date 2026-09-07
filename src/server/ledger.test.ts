@@ -22,6 +22,7 @@ describe("toTransactionInsert", () => {
       status: "needs_review",
       source: "on_device_model",
       notes: null,
+      group_id: null,
     });
   });
 });

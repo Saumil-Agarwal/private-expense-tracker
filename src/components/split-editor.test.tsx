@@ -26,4 +26,16 @@ describe("SplitEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "Split equally" }));
     expect(onChange).toHaveBeenLastCalledWith({ status: "confirmed", allocations: [{ personId: "me", amountPaise: 5000 }, { personId: "name:Rahul", amountPaise: 5000 }] });
   });
+
+  it("allows Me to be explicitly excluded from an equal split", () => {
+    const onChange = vi.fn();
+    render(<SplitEditor amountPaise={10001} people={[{ id: "me", name: "Me" }, { id: "name:Rahul", name: "Rahul" }, { id: "name:Jo", name: "Jo" }]} onChange={onChange} />);
+    expect(screen.getByRole("checkbox", { name: "Me" })).toBeChecked();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Me" }));
+    fireEvent.click(screen.getByRole("button", { name: "Split equally" }));
+    expect(onChange).toHaveBeenLastCalledWith({ status: "confirmed", allocations: [
+      { personId: "name:Rahul", amountPaise: 5001 },
+      { personId: "name:Jo", amountPaise: 5000 },
+    ] });
+  });
 });

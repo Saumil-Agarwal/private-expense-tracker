@@ -45,19 +45,19 @@ const receiptJsonSchema = {
 export async function POST(request: Request) {
   try {
     const form = await request.formData();
-    const image = form.get("image");
+    const images = form.getAll("images");
     const instructions = String(form.get("instructions") ?? "").trim();
-    if (!image || typeof image === "string" || !("arrayBuffer" in image) || !image.type.startsWith("image/")) {
+    if (images.length < 1 || images.length > 10 || images.some((image) => typeof image === "string" || !("arrayBuffer" in image) || !image.type.startsWith("image/"))) {
       return NextResponse.json({ error: "Paste or choose an image receipt." }, { status: 400 });
     }
-    if (image.size > 10 * 1024 * 1024) {
+    if (images.some((image) => typeof image !== "string" && image.size > 10 * 1024 * 1024)) {
       return NextResponse.json({ error: "Receipt images must be smaller than 10 MB." }, { status: 400 });
     }
 
     assertAllowedOutboundUrl(OLLAMA_URL);
     const groups = Object.entries(LOCAL_GROUPS).map(([name, people]) => `${name}: ${people.map((person) => person.name).join(", ")}`).join("; ");
     const prompt = [
-      "Read this receipt image and return JSON matching the supplied schema.",
+      `Read these ${images.length} screenshot(s) as parts of one expense and return one JSON object matching the supplied schema.`,
       "Report amounts in rupees exactly as displayed, including decimals. Use final charged prices, not crossed-out list prices.",
       "If the merchant is not visible, use Unspecified merchant; never invent one.",
       "Every purchased line item must appear exactly once. The item amounts must add up to totalRupees.",
@@ -75,7 +75,7 @@ export async function POST(request: Request) {
         think: false,
         format: receiptJsonSchema,
         options: { temperature: 0, num_ctx: 8192 },
-        messages: [{ role: "user", content: prompt, images: [Buffer.from(await image.arrayBuffer()).toString("base64")] }],
+        messages: [{ role: "user", content: prompt, images: await Promise.all(images.map(async (image) => Buffer.from(await (image as File).arrayBuffer()).toString("base64"))) }],
       }),
       signal: AbortSignal.timeout(120_000),
     });

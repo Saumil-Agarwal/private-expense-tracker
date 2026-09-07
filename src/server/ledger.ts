@@ -10,5 +10,6 @@ export function toTransactionInsert(userId: string, expense: ConfirmedExpense) {
     status: expense.status,
     source: expense.source,
     notes: expense.notes ?? null,
+    group_id: expense.groupId ?? null,
   };
 }

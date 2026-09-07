@@ -13,6 +13,7 @@ export const ExpenseDraftSchema = z.object({
   currency: z.literal("INR").default("INR"),
   date: z.iso.date(),
   accountId: z.string().min(1).optional(),
+  groupId: z.string().uuid().optional(),
   category: z.string().trim().min(1).optional(),
   status: ExpenseStatusSchema.default("draft"),
   notes: z.string().trim().max(1000).optional(),
