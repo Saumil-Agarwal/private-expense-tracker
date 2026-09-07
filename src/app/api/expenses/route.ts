@@ -8,7 +8,11 @@ import { toTransactionInsert } from "@/server/ledger";
 async function owner(request: Request) {
   const telegramId = authenticateTelegramRequest(request);
   const supabase = createServerSupabaseClient();
-  const { data, error } = await supabase.from("profiles").select("id").eq("telegram_user_id", telegramId).single();
+  const { data, error } = await supabase
+    .from("profiles")
+    .upsert({ telegram_user_id: telegramId, display_name: "Owner" }, { onConflict: "telegram_user_id" })
+    .select("id")
+    .single();
   if (error || !data) throw new Error("Owner profile is not configured");
   return { userId: data.id as string, supabase };
 }

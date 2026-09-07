@@ -25,7 +25,11 @@ export async function POST(request: Request) {
   }
 
   const supabase = createServerSupabaseClient();
-  const { data: profile, error: profileError } = await supabase.from("profiles").select("id").eq("telegram_user_id", allowedUserId).single();
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .upsert({ telegram_user_id: allowedUserId, display_name: "Owner" }, { onConflict: "telegram_user_id" })
+    .select("id")
+    .single();
   if (profileError || !profile) return NextResponse.json({ error: "Owner profile is not configured" }, { status: 503 });
 
   const { error: dedupeError } = await supabase.from("telegram_updates").insert({ user_id: profile.id, telegram_update_id: update.update_id });

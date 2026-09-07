@@ -14,3 +14,19 @@ export async function sendTelegramMessage(input: { botToken: string; chatId: num
   });
   if (!response.ok) throw new Error(`Telegram delivery failed (${response.status})`);
 }
+
+export async function setTelegramWebhook(input: { botToken: string; appUrl: string; webhookSecret: string }): Promise<void> {
+  const endpoint = `https://api.telegram.org/bot${input.botToken}/setWebhook`;
+  assertAllowedOutboundUrl(endpoint);
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      url: `${input.appUrl.replace(/\/$/, "")}/api/telegram/webhook`,
+      secret_token: input.webhookSecret,
+      allowed_updates: ["message"],
+      drop_pending_updates: false,
+    }),
+  });
+  if (!response.ok) throw new Error(`Telegram webhook registration failed (${response.status})`);
+}
