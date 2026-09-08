@@ -12,7 +12,7 @@ The browser renders the Next.js application and calls same-origin route handlers
 
 Text parsing remains an immediate in-browser operation. Receipt interpretation is invoked only after the user explicitly creates a draft. The local receipt endpoint sends the queued in-memory images to Ollama at `127.0.0.1:11434`; if Ollama fails, the browser may use the existing on-device OCR fallback. No Telegram script, webhook, bot API, or external inference service participates in the flow.
 
-The root route redirects directly to `/summary`. The primary screens remain Overview, Expenses, and Add expense.
+The root route redirects directly to `/summary`. The primary screens are Overview, Expenses, Groups, and Add expense.
 
 ## Local owner identity
 
@@ -53,6 +53,26 @@ Other client validation failures are converted into concise user-facing messages
 
 The local-owner and database layers return operational messages without classifying failures as authentication errors.
 
+## Groups
+
+A dedicated `/groups` page is linked from the application navigation. It lists saved groups and their members and provides a structured creation form. Members are added individually, and `Me` can be explicitly included or excluded. Saving creates the group and its people through the groups API and updates the list without leaving the page.
+
+The Add expense flow continues to allow group selection and offers the same group creation control inline. Creating a group inline preserves the current expense draft and selects the new group immediately. This iteration supports creating, viewing, and reusing groups; editing and deleting groups are deferred.
+
+## Financial reconciliation
+
+The Overview independently recalculates financial invariants from the raw transaction and allocation rows returned by the expense API. All arithmetic uses integer paise.
+
+For every confirmed expense, the sum of its allocations must equal its recorded amount. The workings display `Verified` when they match and `Mismatch by ₹X` when they do not. Unresolved expenses remain explicitly outside participant allocations.
+
+The summary also proves both aggregate equations:
+
+`confirmed expense total = sum of participant totals`
+
+`recorded total = confirmed expense total + unresolved total`
+
+The UI displays the confirmed, unresolved, participant, and recorded totals together with a reconciliation result. A stored inconsistency is surfaced rather than hidden or silently repaired.
+
 ## Performance
 
 The normal application shell performs no Telegram SDK download, Telegram polling, session check, or unlock round trip. `/` redirects immediately to Overview.
@@ -71,6 +91,12 @@ Implementation follows test-first red-green cycles. Automated coverage must incl
 - the migration preserves the existing profile UUID and rejects ambiguous profile state;
 - blank or whitespace-only merchant input shows `Enter a merchant name` and performs no save request;
 - valid expense submission still sends the expected structured payload;
+- each confirmed expense is verified against the sum of its allocations;
+- a one-paise allocation mismatch is detected and reported;
+- participant totals equal the confirmed expense total for balanced data;
+- confirmed plus unresolved expenses equal the recorded total;
+- equal-split remainder paise are assigned deterministically;
+- groups can be created, loaded, and selected without losing an expense draft;
 - Telegram and access-key references are absent from runtime source, environment examples, and current setup documentation;
 - the outbound network policy permits only local Ollama and configured Supabase destinations.
 
