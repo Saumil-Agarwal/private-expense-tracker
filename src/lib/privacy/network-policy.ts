@@ -1,5 +1,3 @@
-const APPROVED_HOSTS = ["api.telegram.org"];
-
 export function assertAllowedOutboundUrl(input: string): void {
   if (input.startsWith("/")) return;
 
@@ -9,9 +7,8 @@ export function assertAllowedOutboundUrl(input: string): void {
     ["127.0.0.1", "localhost"].includes(url.hostname) &&
     url.port === "11434";
   const isSupabase = url.protocol === "https:" && url.hostname.endsWith(".supabase.co");
-  const isApproved = url.protocol === "https:" && APPROVED_HOSTS.includes(url.hostname);
 
-  if (!isLocalOllama && !isSupabase && !isApproved) {
+  if (!isLocalOllama && !isSupabase) {
     throw new Error("Outbound destination is not allowed");
   }
 }

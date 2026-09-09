@@ -4,7 +4,6 @@ import { assertAllowedOutboundUrl } from "./network-policy";
 
 describe("assertAllowedOutboundUrl", () => {
   it.each([
-    "https://api.telegram.org/bot-token/sendMessage",
     "https://sample.supabase.co/rest/v1/transactions",
     "http://127.0.0.1:11434/api/chat",
     "/api/expenses",
@@ -13,6 +12,7 @@ describe("assertAllowedOutboundUrl", () => {
   });
 
   it.each([
+    "https://api.telegram.org/bot-token/sendMessage",
     "https://api.openai.com/v1/responses",
     "https://generativelanguage.googleapis.com/v1/models",
     "https://api.anthropic.com/v1/messages",

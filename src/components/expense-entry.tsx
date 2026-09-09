@@ -10,7 +10,6 @@ import { createOnDeviceExtractor } from "@/inference/web-model";
 import type { ReceiptResult } from "@/inference/receipt";
 import { SplitEditor } from "./split-editor";
 import { GroupPicker, type ExpenseGroup } from "./group-picker";
-import { UnlockForm } from "./unlock-form";
 
 const categories = ["Restaurants", "Uber", "Cab", "Groceries", "Supermarkets", "Amazon groceries", "Internet", "Gifts", "Badminton game", "Bus", "Shows", "Flight", "Electricity", "Trip", "Activities", "Maid"];
 
@@ -23,7 +22,6 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
   const [receipt, setReceipt] = useState<ReceiptResult | null>(null);
   const [images, setImages] = useState<File[]>([]);
   const [group, setGroup] = useState<ExpenseGroup | null>(null);
-  const [locked, setLocked] = useState(false);
 
   async function extract(useModel = false) {
     if (images.length > 0) return readReceipts();
@@ -69,9 +67,7 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
     setBusy(true); setMessage("");
     try {
       const payload = ConfirmedExpenseSchema.parse({ ...draft, ...split, groupId: group?.id });
-      const initData = window.Telegram?.WebApp?.initData ?? "";
-      const response = await fetch("/api/expenses", { method: "POST", headers: { "content-type": "application/json", "x-telegram-init-data": initData }, body: JSON.stringify(payload) });
-      if (response.status === 401) { setLocked(true); throw new Error("Unlock your ledger to save this expense."); }
+      const response = await fetch("/api/expenses", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
       if (!response.ok) throw new Error((await response.json()).error ?? "Save failed");
       setMessage("Expense saved."); setText(""); setDraft(null); setReceipt(null); setImages([]);
     } catch (error) { setMessage(error instanceof Error ? error.message : "Save failed"); }
@@ -96,7 +92,7 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
         <div className="section-heading"><div><span className="step">2</span><h2>Check the details</h2></div><strong>{formatInr(draft.amountPaise)}</strong></div>
         <div className="field-grid"><label>Merchant<input value={draft.merchant} onChange={(event) => setDraft({ ...draft, merchant: event.target.value })} /></label><label>Date<input type="date" value={draft.date} onChange={(event) => setDraft({ ...draft, date: event.target.value })} /></label><label>Category<select value={draft.category ?? ""} onChange={(event) => setDraft({ ...draft, category: event.target.value })}><option value="">Uncategorized</option>{categories.map((category) => <option key={category}>{category}</option>)}</select></label></div>
       </section>
-      {locked ? <UnlockForm onUnlocked={() => { setLocked(false); setMessage("Ledger unlocked. Confirm and save again."); }} /> : <GroupPicker onSelect={setGroup} onUnauthorized={() => setLocked(true)} />}
+      <GroupPicker onSelect={setGroup} />
       {receipt && <section className="form-section receipt-review">
         <div className="section-heading"><div><span className="step">3</span><h2>Receipt items</h2></div><span className="model-badge">Qwen 3.5 9B (local Ollama)</span></div>
         <ul className="receipt-items">{receipt.items.map((item, index) => <li key={`${item.name}-${index}`}><span>{item.name}{item.personal && <small>Only me</small>}</span><strong>{formatInr(item.amountPaise)}</strong></li>)}</ul>
@@ -108,5 +104,3 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
     {message && <p className="form-message" role="status">{message}</p>}
   </div>;
 }
-
-declare global { interface Window { Telegram?: { WebApp?: { initData?: string; ready?: () => void; expand?: () => void } } } }
