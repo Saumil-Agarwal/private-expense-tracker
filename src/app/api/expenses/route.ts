@@ -1,26 +1,13 @@
 import { NextResponse } from "next/server";
 
 import { ConfirmedExpenseSchema } from "@/domain/expense";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { authenticateOwnerRequest } from "@/server/auth";
 import { toTransactionInsert } from "@/server/ledger";
-
-async function owner(request: Request) {
-  const telegramId = authenticateOwnerRequest(request);
-  const supabase = createServerSupabaseClient();
-  const { data, error } = await supabase
-    .from("profiles")
-    .upsert({ telegram_user_id: telegramId, display_name: "Owner" }, { onConflict: "telegram_user_id" })
-    .select("id")
-    .single();
-  if (error || !data) throw new Error("Owner profile is not configured");
-  return { userId: data.id as string, supabase };
-}
+import { getLocalOwnerContext } from "@/server/local-owner";
 
 export async function POST(request: Request) {
   try {
     const expense = ConfirmedExpenseSchema.parse(await request.json());
-    const { userId, supabase } = await owner(request);
+    const { userId, supabase } = await getLocalOwnerContext();
     let categoryId: string | null = null;
     if (expense.category) {
       const { data, error } = await supabase.from("categories").upsert({ user_id: userId, name: expense.category }, { onConflict: "user_id,name" }).select("id").single();
@@ -45,14 +32,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ id: transaction.id }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid expense";
-    const status = /Telegram|allowed|identity|Unauthorized/.test(message) ? 401 : 400;
-    return NextResponse.json({ error: message }, { status });
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 }
 
 export async function GET(request: Request) {
   try {
-    const { userId, supabase } = await owner(request);
+    const { userId, supabase } = await getLocalOwnerContext();
     const url = new URL(request.url);
     let query = supabase.from("transactions").select("id,occurred_on,merchant,amount_paise,status,categories(name),groups(id,name),allocations(amount_paise,people(name))").eq("user_id", userId);
     const from = url.searchParams.get("from"); const to = url.searchParams.get("to");
@@ -62,5 +48,5 @@ export async function GET(request: Request) {
     if (error) throw error;
     type TransactionRow = { allocations?: Array<{ amount_paise: number; people?: { name: string } | null }>; [key: string]: unknown };
     return NextResponse.json({ transactions: ((data ?? []) as unknown as TransactionRow[]).map((transaction) => ({ ...transaction, allocations: (transaction.allocations ?? []).map((allocation) => ({ person: allocation.people?.name ?? "Unknown", amount_paise: allocation.amount_paise })) })) });
-  } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Unauthorized" }, { status: 401 }); }
+  } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to load ledger" }, { status: 500 }); }
 }

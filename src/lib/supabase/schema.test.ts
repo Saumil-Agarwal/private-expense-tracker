@@ -10,6 +10,12 @@ function migrationSql(): string {
   return readFileSync(join(migrationsDir, migration), "utf8").toLowerCase();
 }
 
+function localOwnerMigrationSql(): string {
+  const migration = readdirSync(migrationsDir).find((file) => file.endsWith("_replace_telegram_owner.sql"));
+  if (!migration) throw new Error("Local owner migration does not exist");
+  return readFileSync(join(migrationsDir, migration), "utf8").toLowerCase();
+}
+
 describe("Supabase expense schema", () => {
   it("enables RLS on every user-owned table", () => {
     const sql = migrationSql();
@@ -27,5 +33,16 @@ describe("Supabase expense schema", () => {
 
   it("creates a security-invoker monthly summary", () => {
     expect(migrationSql()).toContain("with (security_invoker = true)");
+  });
+
+  it("preserves one owner while removing Telegram identity", () => {
+    const sql = localOwnerMigrationSql();
+    expect(sql).toContain("count(*)");
+    expect(sql).toContain("raise exception");
+    expect(sql).toContain("profile_key");
+    expect(sql).toContain("local-owner");
+    expect(sql).toContain("drop column telegram_user_id");
+    expect(sql).toContain("drop table public.telegram_updates");
+    expect(sql).not.toMatch(/source[^;]+['"]telegram['"]/);
   });
 });
