@@ -22,6 +22,7 @@ alter table public.profiles drop column telegram_user_id;
 drop table public.telegram_updates;
 
 alter table public.transactions drop constraint if exists transactions_source_check;
+update public.transactions set source = 'manual' where source = 'telegram';
 alter table public.transactions add constraint transactions_source_check
   check (source in ('manual', 'receipt', 'ollama', 'on_device_model'));
 

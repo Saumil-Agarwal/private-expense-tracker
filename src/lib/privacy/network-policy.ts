@@ -1,4 +1,4 @@
-export function assertAllowedOutboundUrl(input: string): void {
+export function assertAllowedOutboundUrl(input: string, configuredSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL): void {
   if (input.startsWith("/")) return;
 
   const url = new URL(input);
@@ -6,7 +6,7 @@ export function assertAllowedOutboundUrl(input: string): void {
     url.protocol === "http:" &&
     ["127.0.0.1", "localhost"].includes(url.hostname) &&
     url.port === "11434";
-  const isSupabase = url.protocol === "https:" && url.hostname.endsWith(".supabase.co");
+  const isSupabase = Boolean(configuredSupabaseUrl) && url.protocol === "https:" && url.origin === new URL(configuredSupabaseUrl!).origin;
 
   if (!isLocalOllama && !isSupabase) {
     throw new Error("Outbound destination is not allowed");

@@ -15,7 +15,7 @@ export function SplitEditor({ amountPaise, people, onChange }: { amountPaise: nu
   const [amounts, setAmounts] = useState<Record<string, string>>({});
   function personal() {
     setCustom(false);
-    const result = calculateAllocations({ mode: "personal", totalPaise: amountPaise, ownerId: participants[0]?.id ?? "me" });
+    const result = calculateAllocations({ mode: "personal", totalPaise: amountPaise, ownerId: "me" });
     onChange({ status: "confirmed", allocations: result.allocations });
   }
   function equal() {

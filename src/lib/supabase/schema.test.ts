@@ -43,6 +43,7 @@ describe("Supabase expense schema", () => {
     expect(sql).toContain("local-owner");
     expect(sql).toContain("drop column telegram_user_id");
     expect(sql).toContain("drop table public.telegram_updates");
-    expect(sql).not.toMatch(/source[^;]+['"]telegram['"]/);
+    expect(sql).toContain("update public.transactions set source = 'manual' where source = 'telegram'");
+    expect(sql.indexOf("update public.transactions set source")).toBeLessThan(sql.indexOf("add constraint transactions_source_check"));
   });
 });

@@ -38,4 +38,18 @@ describe("SplitEditor", () => {
       { personId: "name:Jo", amountPaise: 5000 },
     ] });
   });
+
+  it("assigns Only me to the owner even when Me is not first", () => {
+    const onChange = vi.fn();
+    render(<SplitEditor amountPaise={10000} people={[{ id: "name:Rahul", name: "Rahul" }, { id: "me", name: "Me" }]} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "Only me" }));
+    expect(onChange).toHaveBeenLastCalledWith({ status: "confirmed", allocations: [{ personId: "me", amountPaise: 10000 }] });
+  });
+
+  it("still assigns Only me to the stable owner when the selected group excludes Me", () => {
+    const onChange = vi.fn();
+    render(<SplitEditor amountPaise={10000} people={[{ id: "name:Rahul", name: "Rahul" }]} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "Only me" }));
+    expect(onChange).toHaveBeenLastCalledWith({ status: "confirmed", allocations: [{ personId: "me", amountPaise: 10000 }] });
+  });
 });

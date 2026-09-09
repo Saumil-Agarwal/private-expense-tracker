@@ -32,4 +32,24 @@ describe("POST /api/groups", () => {
     expect(peopleNames).toEqual(["Rahul"]);
     await expect(response.json()).resolves.toMatchObject({ group: { name: "Friends", people: [{ name: "Rahul" }] } });
   });
+
+  it("removes a partially created group when member persistence fails", async () => {
+    const deleted: string[] = [];
+    const client = {
+      from(table: string) {
+        if (table === "groups") return {
+          insert: () => ({ select: () => ({ single: async () => ({ data: { id: "group-1", name: "Friends" }, error: null }) }) }),
+          delete: () => ({ eq: async (_field: string, id: string) => { deleted.push(id); return { error: null }; } }),
+        };
+        if (table === "people") return { upsert: () => ({ select: () => ({ single: async () => ({ data: null, error: new Error("person failed") }) }) }) };
+        throw new Error(`Unexpected table ${table}`);
+      },
+    } as unknown as SupabaseClient;
+    vi.mocked(getLocalOwnerContext).mockResolvedValue({ userId: "owner-1", supabase: client });
+    const request = new Request("http://localhost/api/groups", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Friends", memberNames: ["Rahul"] }) });
+
+    const response = await POST(request);
+    expect(response.status).toBe(500);
+    expect(deleted).toEqual(["group-1"]);
+  });
 });

@@ -6,6 +6,7 @@ import { getLocalOwnerContext } from "@/server/local-owner";
 
 export async function POST(request: Request) {
   let expense: ReturnType<typeof ConfirmedExpenseSchema.parse>;
+  let createdTransaction: { id: string; supabase: Awaited<ReturnType<typeof getLocalOwnerContext>>["supabase"] } | null = null;
   try {
     const parsed = ConfirmedExpenseSchema.safeParse(await request.json());
     if (!parsed.success) {
@@ -26,6 +27,7 @@ export async function POST(request: Request) {
     }
     const { data: transaction, error } = await supabase.from("transactions").insert({ ...toTransactionInsert(userId, expense), category_id: categoryId }).select("id").single();
     if (error || !transaction) throw error ?? new Error("Transaction was not created");
+    createdTransaction = { id: transaction.id as string, supabase };
     if (expense.allocations.length) {
       const { data: me } = await supabase.from("people").upsert({ user_id: userId, name: "Me", is_owner: true }, { onConflict: "user_id,name" }).select("id").single();
       const participantIds = new Map<string, string>();
@@ -38,10 +40,11 @@ export async function POST(request: Request) {
       }
       const rows = expense.allocations.map((allocation) => ({ user_id: userId, transaction_id: transaction.id, person_id: participantIds.get(allocation.personId) ?? allocation.personId, amount_paise: allocation.amountPaise }));
       const { error: allocationError } = await supabase.from("allocations").insert(rows);
-      if (allocationError) { await supabase.from("transactions").delete().eq("id", transaction.id); throw allocationError; }
+      if (allocationError) throw allocationError;
     }
     return NextResponse.json({ id: transaction.id }, { status: 201 });
   } catch (error) {
+    if (createdTransaction) await createdTransaction.supabase.from("transactions").delete().eq("id", createdTransaction.id);
     const message = error instanceof Error ? error.message : "Invalid expense";
     return NextResponse.json({ error: message }, { status: 500 });
   }
@@ -55,7 +58,9 @@ export async function GET(request: Request) {
     const from = url.searchParams.get("from"); const to = url.searchParams.get("to");
     if (from) query = query.gte("occurred_on", from);
     if (to) query = query.lte("occurred_on", to);
-    const { data, error } = await query.order("occurred_on", { ascending: false }).limit(100);
+    query = query.order("occurred_on", { ascending: false });
+    if (!from && !to) query = query.limit(100);
+    const { data, error } = await query;
     if (error) throw error;
     type TransactionRow = { allocations?: Array<{ amount_paise: number; people?: { name: string } | null }>; [key: string]: unknown };
     return NextResponse.json({ transactions: ((data ?? []) as unknown as TransactionRow[]).map((transaction) => ({ ...transaction, allocations: (transaction.allocations ?? []).map((allocation) => ({ person: allocation.people?.name ?? "Unknown", amount_paise: allocation.amount_paise })) })) });

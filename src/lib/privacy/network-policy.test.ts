@@ -4,7 +4,6 @@ import { assertAllowedOutboundUrl } from "./network-policy";
 
 describe("assertAllowedOutboundUrl", () => {
   it.each([
-    "https://sample.supabase.co/rest/v1/transactions",
     "http://127.0.0.1:11434/api/chat",
     "/api/expenses",
   ])("allows approved destination %s", (url) => {
@@ -19,5 +18,10 @@ describe("assertAllowedOutboundUrl", () => {
     "https://unknown.example/infer",
   ])("rejects hosted inference destination %s", (url) => {
     expect(() => assertAllowedOutboundUrl(url)).toThrow("Outbound destination is not allowed");
+  });
+
+  it("allows only the configured Supabase project", () => {
+    expect(() => assertAllowedOutboundUrl("https://sample.supabase.co/rest/v1/transactions", "https://sample.supabase.co")).not.toThrow();
+    expect(() => assertAllowedOutboundUrl("https://other.supabase.co/rest/v1/transactions", "https://sample.supabase.co")).toThrow("Outbound destination is not allowed");
   });
 });

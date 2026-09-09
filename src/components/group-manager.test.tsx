@@ -31,4 +31,11 @@ describe("GroupManager", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove Me" }));
     expect(screen.queryByRole("button", { name: "Remove Me" })).not.toBeInTheDocument();
   });
+
+  it("shows a group loading failure instead of an empty list", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "Database unavailable" }), { status: 500, headers: { "content-type": "application/json" } })));
+    render(<GroupManager />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Database unavailable");
+    expect(screen.queryByText("No saved groups yet.")).not.toBeInTheDocument();
+  });
 });

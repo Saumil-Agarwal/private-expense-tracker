@@ -9,13 +9,16 @@ export function GroupManager({ compact = false, onCreated }: { compact?: boolean
   const [newMember, setNewMember] = useState("");
   const [members, setMembers] = useState(["Me"]);
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let active = true;
     void fetch("/api/groups").then(async (response) => {
-      if (active && response.ok) setGroups((await response.json()).groups ?? []);
-    }).catch(() => { /* creation remains available if loading fails */ });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Groups could not be loaded");
+      if (active) setGroups(body.groups ?? []);
+    }).catch((reason) => { if (active) setLoadError(reason instanceof Error ? reason.message : "Groups could not be loaded"); });
     return () => { active = false; };
   }, []);
 
@@ -47,6 +50,6 @@ export function GroupManager({ compact = false, onCreated }: { compact?: boolean
     <div className="people-chips">{members.map((member) => <span key={member}>{member}<button type="button" aria-label={`Remove ${member}`} onClick={() => setMembers((current) => current.filter((item) => item !== member))}>×</button></span>)}</div>
     <button type="button" className="button-primary" disabled={busy} onClick={create}>{busy ? "Saving…" : "Save group"}</button>
     {error && <p role="alert">{error}</p>}
-    {!compact && <div className="group-list"><h2>Saved groups</h2>{groups.length ? groups.map((group) => <article key={group.id}><strong>{group.name}</strong><p>{group.people.map((person) => person.name).join(", ")}</p></article>) : <p>No saved groups yet.</p>}</div>}
+    {!compact && <div className="group-list"><h2>Saved groups</h2>{loadError ? <p role="alert">{loadError}</p> : groups.length ? groups.map((group) => <article key={group.id}><strong>{group.name}</strong><p>{group.people.map((person) => person.name).join(", ")}</p></article>) : <p>No saved groups yet.</p>}</div>}
   </section>;
 }

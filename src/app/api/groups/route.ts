@@ -12,12 +12,15 @@ export async function GET() {
     type GroupRow = { id: string; name: string; group_members?: Array<{ people: { id: string; name: string; is_owner: boolean } }> };
     const groups = ((data ?? []) as unknown as GroupRow[]).map((group) => ({ id: group.id, name: group.name, people: (group.group_members ?? []).map((member) => ({ id: member.people.is_owner ? "me" : member.people.id, persistedId: member.people.id, name: member.people.name })) }));
     return NextResponse.json({ groups });
-  } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to load groups" }, { status: 401 }); }
+  } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to load groups" }, { status: 500 }); }
 }
 
 export async function POST(request: Request) {
+  const parsed = CreateGroup.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) return NextResponse.json({ error: "Invalid group details", fieldErrors: parsed.error.flatten().fieldErrors }, { status: 400 });
+  let createdGroup: { id: string; supabase: Awaited<ReturnType<typeof getLocalOwnerContext>>["supabase"] } | null = null;
   try {
-    const input = CreateGroup.parse(await request.json());
+    const input = parsed.data;
     const namesByKey = new Map<string, string>();
     for (const name of input.memberNames) {
       const trimmed = name.trim();
@@ -28,6 +31,7 @@ export async function POST(request: Request) {
     const { userId, supabase } = await getLocalOwnerContext();
     const { data: group, error: groupError } = await supabase.from("groups").insert({ user_id: userId, name: input.name }).select("id,name").single();
     if (groupError || !group) throw groupError ?? new Error("Group was not created");
+    createdGroup = { id: group.id as string, supabase };
     const people: Array<{ id: string; name: string; is_owner: boolean }> = [];
     for (const name of names) {
       const isOwner = name.toLowerCase() === "me";
@@ -38,5 +42,8 @@ export async function POST(request: Request) {
     const { error: memberError } = await supabase.from("group_members").insert(people.map((person) => ({ user_id: userId, group_id: group.id, person_id: person.id })));
     if (memberError) throw memberError;
     return NextResponse.json({ group: { id: group.id, name: group.name, people: people.map((person) => ({ id: person.is_owner ? "me" : person.id, persistedId: person.id, name: person.name })) } }, { status: 201 });
-  } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to create group" }, { status: 400 }); }
+  } catch (error) {
+    if (createdGroup) await createdGroup.supabase.from("groups").delete().eq("id", createdGroup.id);
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to create group" }, { status: 500 });
+  }
 }

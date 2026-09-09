@@ -5,7 +5,7 @@ A local-first, single-user expense tracker. Receipt OCR and language-model infer
 ## Privacy model
 
 - No OpenAI, Anthropic, Gemini, or hosted inference endpoint is configured.
-- Receipt files stay in browser memory and are never uploaded.
+- Receipt files never leave the local machine; they are not persisted or sent to hosted inference.
 - Browser inference uses WebLLM; local development may use Ollama at `127.0.0.1:11434`.
 - Supabase receives only the structured information explicitly confirmed by the user.
 
