@@ -11,7 +11,8 @@
     "start": "next start",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "verify": "pnpm test && pnpm lint && pnpm build"
   },
   "dependencies": {
     "@mlc-ai/web-llm": "0.2.84",

@@ -17,7 +17,7 @@ export const ExpenseDraftSchema = z.object({
   category: z.string().trim().min(1).optional(),
   status: ExpenseStatusSchema.default("draft"),
   notes: z.string().trim().max(1000).optional(),
-  source: z.enum(["manual", "telegram", "receipt", "ollama", "on_device_model"]).default("manual"),
+  source: z.enum(["manual", "receipt", "ollama", "on_device_model"]).default("manual"),
 });
 
 export const ConfirmedExpenseSchema = ExpenseDraftSchema.extend({

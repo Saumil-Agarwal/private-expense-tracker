@@ -67,8 +67,11 @@ textarea:focus, input:focus, select:focus { border-color: #55764d; box-shadow: 0
 .participant-row label { flex: 1; color: var(--muted); font-size: 12px; }
 .participant-row input { margin-top: 6px; }
 .people-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-.people-chips label { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 6px 9px; border-radius: 999px; background: #edf0e9; color: #52604f; }
+.people-chips label, .people-chips span { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 6px 9px; border-radius: 999px; background: #edf0e9; color: #52604f; }
 .people-chips input { width: auto; margin: 0; }
+.people-chips span button { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 16px; line-height: 1; padding: 0; }
+.group-list { margin-top: 24px; }
+.group-list article { border-top: 1px solid var(--line); padding: 12px 0; }
 .image-queue { display: flex; flex-wrap: wrap; gap: 7px; list-style: none; padding: 0; margin: 12px 0 0; }
 .image-queue li { display: flex; align-items: center; gap: 6px; padding: 7px 9px; border-radius: 10px; background: #edf0e9; font-size: 12px; }
 .image-queue button { display: grid; place-items: center; padding: 0; border: 0; background: transparent; }
