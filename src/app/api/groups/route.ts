@@ -18,7 +18,13 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const input = CreateGroup.parse(await request.json());
-    const names = [...new Set(input.memberNames.map((name) => name.trim()))];
+    const namesByKey = new Map<string, string>();
+    for (const name of input.memberNames) {
+      const trimmed = name.trim();
+      const key = trimmed.toLocaleLowerCase();
+      if (!namesByKey.has(key)) namesByKey.set(key, trimmed);
+    }
+    const names = [...namesByKey.values()];
     const { userId, supabase } = await getLocalOwnerContext();
     const { data: group, error: groupError } = await supabase.from("groups").insert({ user_id: userId, name: input.name }).select("id,name").single();
     if (groupError || !group) throw groupError ?? new Error("Group was not created");
