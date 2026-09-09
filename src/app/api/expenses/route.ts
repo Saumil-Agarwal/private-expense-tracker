@@ -5,8 +5,19 @@ import { toTransactionInsert } from "@/server/ledger";
 import { getLocalOwnerContext } from "@/server/local-owner";
 
 export async function POST(request: Request) {
+  let expense: ReturnType<typeof ConfirmedExpenseSchema.parse>;
   try {
-    const expense = ConfirmedExpenseSchema.parse(await request.json());
+    const parsed = ConfirmedExpenseSchema.safeParse(await request.json());
+    if (!parsed.success) {
+      const fieldErrors = parsed.error.flatten().fieldErrors;
+      if (fieldErrors.merchant) fieldErrors.merchant = ["Enter a merchant name"];
+      return NextResponse.json({ error: "Invalid expense details", fieldErrors }, { status: 400 });
+    }
+    expense = parsed.data;
+  } catch {
+    return NextResponse.json({ error: "Invalid expense details" }, { status: 400 });
+  }
+  try {
     const { userId, supabase } = await getLocalOwnerContext();
     let categoryId: string | null = null;
     if (expense.category) {
@@ -32,7 +43,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ id: transaction.id }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid expense";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 

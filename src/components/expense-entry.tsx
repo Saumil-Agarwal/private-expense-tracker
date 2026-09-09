@@ -19,6 +19,7 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
   const [split, setSplit] = useState<{ status: "confirmed" | "needs_review"; allocations: Array<{ personId: string; amountPaise: number }> }>({ status: "needs_review", allocations: [] });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [merchantError, setMerchantError] = useState("");
   const [receipt, setReceipt] = useState<ReceiptResult | null>(null);
   const [images, setImages] = useState<File[]>([]);
   const [group, setGroup] = useState<ExpenseGroup | null>(null);
@@ -64,10 +65,16 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
 
   async function save() {
     if (!draft) return;
-    setBusy(true); setMessage("");
+    setMessage(""); setMerchantError("");
+    const parsed = ConfirmedExpenseSchema.safeParse({ ...draft, ...split, groupId: group?.id });
+    if (!parsed.success) {
+      if (parsed.error.issues.some((issue) => issue.path[0] === "merchant")) setMerchantError("Enter a merchant name");
+      else setMessage("Check the highlighted expense details.");
+      return;
+    }
+    setBusy(true);
     try {
-      const payload = ConfirmedExpenseSchema.parse({ ...draft, ...split, groupId: group?.id });
-      const response = await fetch("/api/expenses", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+      const response = await fetch("/api/expenses", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(parsed.data) });
       if (!response.ok) throw new Error((await response.json()).error ?? "Save failed");
       setMessage("Expense saved."); setText(""); setDraft(null); setReceipt(null); setImages([]);
     } catch (error) { setMessage(error instanceof Error ? error.message : "Save failed"); }
@@ -90,7 +97,7 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
     {draft && <>
       <section className="form-section">
         <div className="section-heading"><div><span className="step">2</span><h2>Check the details</h2></div><strong>{formatInr(draft.amountPaise)}</strong></div>
-        <div className="field-grid"><label>Merchant<input value={draft.merchant} onChange={(event) => setDraft({ ...draft, merchant: event.target.value })} /></label><label>Date<input type="date" value={draft.date} onChange={(event) => setDraft({ ...draft, date: event.target.value })} /></label><label>Category<select value={draft.category ?? ""} onChange={(event) => setDraft({ ...draft, category: event.target.value })}><option value="">Uncategorized</option>{categories.map((category) => <option key={category}>{category}</option>)}</select></label></div>
+        <div className="field-grid"><label>Merchant<input value={draft.merchant} aria-invalid={Boolean(merchantError)} aria-describedby={merchantError ? "merchant-error" : undefined} onChange={(event) => { setDraft({ ...draft, merchant: event.target.value }); setMerchantError(""); }} />{merchantError && <small id="merchant-error" role="alert">{merchantError}</small>}</label><label>Date<input type="date" value={draft.date} onChange={(event) => setDraft({ ...draft, date: event.target.value })} /></label><label>Category<select value={draft.category ?? ""} onChange={(event) => setDraft({ ...draft, category: event.target.value })}><option value="">Uncategorized</option>{categories.map((category) => <option key={category}>{category}</option>)}</select></label></div>
       </section>
       <GroupPicker onSelect={setGroup} />
       {receipt && <section className="form-section receipt-review">

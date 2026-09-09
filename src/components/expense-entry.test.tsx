@@ -47,4 +47,35 @@ describe("ExpenseEntry receipt input", () => {
     const form = receiptCall[1]?.body as FormData;
     expect(form.getAll("images")).toHaveLength(2);
   });
+
+  it("shows a field error and does not save a blank merchant", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ groups: [] }), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ExpenseEntry initialText="Dinner ₹100" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
+    const merchant = await screen.findByRole("textbox", { name: "Merchant" });
+    fireEvent.change(merchant, { target: { value: "   " } });
+    fireEvent.click(screen.getByRole("button", { name: "Only me" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm and save" }));
+
+    expect(await screen.findByText("Enter a merchant name")).toBeInTheDocument();
+    expect(merchant).toHaveAttribute("aria-invalid", "true");
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/expenses")).toHaveLength(0);
+  });
+
+  it("saves a valid expense without identity headers", async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string) => Promise.resolve(new Response(JSON.stringify(url === "/api/groups" ? { groups: [] } : { id: "expense-1" }), { status: url === "/api/groups" ? 200 : 201, headers: { "content-type": "application/json" } })));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ExpenseEntry initialText="Dinner ₹100" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
+    await screen.findByRole("textbox", { name: "Merchant" });
+    fireEvent.click(screen.getByRole("button", { name: "Only me" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm and save" }));
+    expect(await screen.findByText("Expense saved.")).toBeInTheDocument();
+
+    const saveCall = fetchMock.mock.calls.find(([url]) => url === "/api/expenses")!;
+    expect(saveCall[1]?.headers).toEqual({ "content-type": "application/json" });
+  });
 });
