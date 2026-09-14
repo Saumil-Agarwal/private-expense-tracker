@@ -1,4 +1,4 @@
-export function assertAllowedOutboundUrl(input: string, configuredSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL): void {
+export function assertAllowedOutboundUrl(input: string, configuredSupabaseUrl = process.env.EXPENSES_NEXT_PUBLIC_SUPABASE_URL): void {
   if (input.startsWith("/")) return;
 
   const url = new URL(input);

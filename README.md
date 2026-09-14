@@ -13,9 +13,9 @@ A local-first, single-user expense tracker. Receipt OCR and language-model infer
 
 1. Install dependencies with `pnpm install`.
 2. Install and open Ollama, then run `ollama pull qwen3.5:9b-q4_K_M`.
-3. Copy `.env.example` to `.env.local` and populate the Supabase values.
+3. Configure `EXPENSES_NEXT_PUBLIC_SUPABASE_URL` and `EXPENSES_SUPABASE_SECRET_KEY` in your environment provider. For Infisical, start the app with `infisical run --env=dev -- pnpm dev`.
 4. Run the Supabase migration in `supabase/migrations`.
-5. Start the app with `pnpm dev` and open `http://localhost:3000`; it redirects directly to Overview.
+5. Start the app through your environment provider and open `http://localhost:3000`; it redirects directly to Overview.
 
 On the new-expense screen, type any ownership instruction and paste or choose up to ten screenshots. Images stay queued until you press **Create draft**, then Ollama reads them together as one expense. The local Next.js route sends the in-memory image bytes to Ollama at `127.0.0.1`; Ollama does not need permission to open the original Desktop file. Set `OLLAMA_RECEIPT_MODEL` to try another installed multimodal model.
 

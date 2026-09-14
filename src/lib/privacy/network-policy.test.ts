@@ -1,8 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { assertAllowedOutboundUrl } from "./network-policy";
 
 describe("assertAllowedOutboundUrl", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
   it.each([
     "http://127.0.0.1:11434/api/chat",
     "/api/expenses",
@@ -23,5 +25,11 @@ describe("assertAllowedOutboundUrl", () => {
   it("allows only the configured Supabase project", () => {
     expect(() => assertAllowedOutboundUrl("https://sample.supabase.co/rest/v1/transactions", "https://sample.supabase.co")).not.toThrow();
     expect(() => assertAllowedOutboundUrl("https://other.supabase.co/rest/v1/transactions", "https://sample.supabase.co")).toThrow("Outbound destination is not allowed");
+  });
+
+  it("reads the allowed Supabase project from the expense-scoped environment", () => {
+    vi.stubEnv("EXPENSES_NEXT_PUBLIC_SUPABASE_URL", "https://expenses.example.supabase.co");
+
+    expect(() => assertAllowedOutboundUrl("https://expenses.example.supabase.co/rest/v1/transactions")).not.toThrow();
   });
 });
