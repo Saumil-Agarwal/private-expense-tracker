@@ -48,6 +48,11 @@ describe("ExpenseEntry receipt input", () => {
     const receiptCall = vi.mocked(fetch).mock.calls.find(([url]) => url === "/api/inference/receipt")!;
     const form = receiptCall[1]?.body as FormData;
     expect(form.getAll("images")).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirm and save" }));
+    await screen.findByText("Expense saved.");
+    const saveCall = vi.mocked(fetch).mock.calls.find(([url]) => url === "/api/expenses")!;
+    expect(JSON.parse(saveCall[1]?.body as string).items).toEqual(receiptBody.items);
   });
 
   it("shows a field error and does not save a blank merchant", async () => {

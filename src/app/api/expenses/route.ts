@@ -28,10 +28,11 @@ export async function POST(request: Request) {
     const { data: transaction, error } = await supabase.from("transactions").insert({ ...toTransactionInsert(userId, expense), category_id: categoryId }).select("id").single();
     if (error || !transaction) throw error ?? new Error("Transaction was not created");
     createdTransaction = { id: transaction.id as string, supabase };
+    let ownerPersonId: string | null = null;
     if (expense.allocations.length) {
       const { data: me } = await supabase.from("people").upsert({ user_id: userId, name: "Me", is_owner: true }, { onConflict: "user_id,name" }).select("id").single();
       const participantIds = new Map<string, string>();
-      if (me?.id) participantIds.set("me", me.id as string);
+      if (me?.id) { ownerPersonId = me.id as string; participantIds.set("me", ownerPersonId); }
       for (const allocation of expense.allocations.filter((item) => item.personId.startsWith("name:"))) {
         const name = allocation.personId.slice(5);
         const { data: person, error: personError } = await supabase.from("people").upsert({ user_id: userId, name }, { onConflict: "user_id,name" }).select("id").single();
@@ -41,6 +42,16 @@ export async function POST(request: Request) {
       const rows = expense.allocations.map((allocation) => ({ user_id: userId, transaction_id: transaction.id, person_id: participantIds.get(allocation.personId) ?? allocation.personId, amount_paise: allocation.amountPaise }));
       const { error: allocationError } = await supabase.from("allocations").insert(rows);
       if (allocationError) throw allocationError;
+    }
+    if (expense.items.some((item) => item.personal) && !ownerPersonId) {
+      const { data: me, error: ownerError } = await supabase.from("people").upsert({ user_id: userId, name: "Me", is_owner: true }, { onConflict: "user_id,name" }).select("id").single();
+      if (ownerError || !me) throw ownerError ?? new Error("Owner could not be saved");
+      ownerPersonId = me.id as string;
+    }
+    if (expense.items.length) {
+      const rows = expense.items.map((item) => ({ user_id: userId, transaction_id: transaction.id, name: item.name, quantity: 1, amount_paise: item.amountPaise, owner_person_id: item.personal ? ownerPersonId : null }));
+      const { error: itemError } = await supabase.from("transaction_items").insert(rows);
+      if (itemError) throw itemError;
     }
     return NextResponse.json({ id: transaction.id }, { status: 201 });
   } catch (error) {
@@ -54,8 +65,9 @@ export async function GET(request: Request) {
   try {
     const { userId, supabase } = await getLocalOwnerContext();
     const url = new URL(request.url);
-    let query = supabase.from("transactions").select("id,occurred_on,merchant,amount_paise,status,categories(name),groups(id,name),allocations(amount_paise,people(name))").eq("user_id", userId);
+    let query = supabase.from("transactions").select("id,occurred_on,merchant,amount_paise,status,deleted_at,categories(name),groups(id,name),allocations(amount_paise,people(name))").eq("user_id", userId);
     const from = url.searchParams.get("from"); const to = url.searchParams.get("to");
+    query = url.searchParams.get("trash") === "true" ? query.not("deleted_at", "is", null) : query.is("deleted_at", null);
     if (from) query = query.gte("occurred_on", from);
     if (to) query = query.lte("occurred_on", to);
     query = query.order("occurred_on", { ascending: false });

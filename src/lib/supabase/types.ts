@@ -11,6 +11,7 @@ export type Database = {
           currency: "INR";
           status: "confirmed" | "needs_review";
           notes: string | null;
+          deleted_at: string | null;
         };
       };
     };

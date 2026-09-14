@@ -111,7 +111,7 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
   async function save() {
     if (!draft) return;
     setMessage(""); setMerchantError("");
-    const parsed = ConfirmedExpenseSchema.safeParse({ ...draft, ...split, groupId: group?.id });
+    const parsed = ConfirmedExpenseSchema.safeParse({ ...draft, ...split, groupId: group?.id, items: receipt?.items ?? [] });
     if (!parsed.success) {
       if (parsed.error.issues.some((issue) => issue.path[0] === "merchant")) setMerchantError("Enter a merchant name");
       else setMessage("Check the highlighted expense details.");

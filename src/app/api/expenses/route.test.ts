@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getLocalOwnerContext } from "@/server/local-owner";
-import { POST } from "./route";
+import { GET, POST } from "./route";
 
 vi.mock("@/server/local-owner", () => ({ getLocalOwnerContext: vi.fn() }));
 
@@ -48,5 +48,53 @@ describe("POST /api/expenses", () => {
     const response = await POST(request);
     expect(response.status).toBe(500);
     expect(deleted).toEqual(["tx-1"]);
+  });
+
+  it("persists receipt items with the transaction", async () => {
+    const itemRows: unknown[] = [];
+    const client = {
+      from(table: string) {
+        if (table === "transactions") return {
+          insert: () => ({ select: () => ({ single: async () => ({ data: { id: "tx-1" }, error: null }) }) }),
+          delete: () => ({ eq: async () => ({ error: null }) }),
+        };
+        if (table === "transaction_items") return { insert: async (rows: unknown[]) => { itemRows.push(...rows); return { error: null }; } };
+        throw new Error(`Unexpected table ${table}`);
+      },
+    } as unknown as SupabaseClient;
+    vi.mocked(getLocalOwnerContext).mockResolvedValue({ userId: "owner-1", supabase: client });
+
+    const response = await POST(new Request("http://localhost/api/expenses", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
+        merchant: "Grocer", amountPaise: 1000, currency: "INR", date: "2026-09-14", status: "needs_review", source: "receipt", allocations: [],
+        items: [{ name: "Milk", amountPaise: 1000, personal: false }],
+      }),
+    }));
+
+    expect(response.status).toBe(201);
+    expect(itemRows).toEqual([{ user_id: "owner-1", transaction_id: "tx-1", name: "Milk", quantity: 1, amount_paise: 1000, owner_person_id: null }]);
+  });
+
+  it.each([
+    ["http://localhost/api/expenses", ["is", "deleted_at", null]],
+    ["http://localhost/api/expenses?trash=true", ["not", "deleted_at", "is", null]],
+  ] as const)("scopes list visibility for %s", async (url, expectedFilter) => {
+    const filters: unknown[][] = [];
+    const query = {
+      eq: (...args: unknown[]) => { filters.push(["eq", ...args]); return query; },
+      is: (...args: unknown[]) => { filters.push(["is", ...args]); return query; },
+      not: (...args: unknown[]) => { filters.push(["not", ...args]); return query; },
+      order: () => query,
+      limit: () => query,
+      then: (resolve: (value: unknown) => void) => resolve({ data: [], error: null }),
+    };
+    const client = { from: () => ({ select: () => query }) } as unknown as SupabaseClient;
+    vi.mocked(getLocalOwnerContext).mockResolvedValue({ userId: "owner-1", supabase: client });
+
+    const response = await GET(new Request(url));
+
+    expect(response.status).toBe(200);
+    expect(filters).toContainEqual(expectedFilter);
+    expect(filters).toContainEqual(["eq", "user_id", "owner-1"]);
   });
 });

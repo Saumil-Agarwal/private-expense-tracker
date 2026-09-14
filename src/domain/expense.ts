@@ -7,6 +7,12 @@ export const AllocationSchema = z.object({
   amountPaise: z.number().int().nonnegative(),
 });
 
+export const ExpenseItemSchema = z.object({
+  name: z.string().trim().min(1),
+  amountPaise: z.number().int().nonnegative(),
+  personal: z.boolean().default(false),
+});
+
 export const ExpenseDraftSchema = z.object({
   merchant: z.string().trim().min(1),
   amountPaise: z.number().int().positive(),
@@ -23,6 +29,7 @@ export const ExpenseDraftSchema = z.object({
 export const ConfirmedExpenseSchema = ExpenseDraftSchema.extend({
   status: z.enum(["confirmed", "needs_review"]),
   allocations: z.array(AllocationSchema),
+  items: z.array(ExpenseItemSchema).default([]),
 }).superRefine((expense, context) => {
   const allocated = expense.allocations.reduce((sum, allocation) => sum + allocation.amountPaise, 0);
   if (expense.status === "confirmed" && allocated !== expense.amountPaise) {

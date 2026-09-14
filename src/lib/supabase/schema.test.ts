@@ -16,6 +16,12 @@ function localOwnerMigrationSql(): string {
   return readFileSync(join(migrationsDir, migration), "utf8").toLowerCase();
 }
 
+function archiveMigrationSql(): string {
+  const migration = readdirSync(migrationsDir).find((file) => file.endsWith("_archive_expenses.sql"));
+  if (!migration) throw new Error("Expense archive migration does not exist");
+  return readFileSync(join(migrationsDir, migration), "utf8").toLowerCase();
+}
+
 describe("Supabase expense schema", () => {
   it("enables RLS on every user-owned table", () => {
     const sql = migrationSql();
@@ -45,5 +51,12 @@ describe("Supabase expense schema", () => {
     expect(sql).toContain("drop table public.telegram_updates");
     expect(sql).toContain("update public.transactions set source = 'manual' where source = 'telegram'");
     expect(sql.indexOf("update public.transactions set source")).toBeLessThan(sql.indexOf("add constraint transactions_source_check"));
+  });
+
+  it("adds indexed soft deletion to transactions", () => {
+    const sql = archiveMigrationSql();
+    expect(sql).toContain("add column deleted_at timestamptz");
+    expect(sql).toContain("where deleted_at is null");
+    expect(sql).toContain("where deleted_at is not null");
   });
 });
