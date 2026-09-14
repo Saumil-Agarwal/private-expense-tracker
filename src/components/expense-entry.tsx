@@ -1,11 +1,12 @@
 "use client";
 
-import { type ClipboardEvent, useState } from "react";
+import { type ClipboardEvent, useEffect, useState } from "react";
 import { Camera, Check, ClipboardPaste, LoaderCircle, Sparkles, X } from "lucide-react";
 
 import { ConfirmedExpenseSchema, formatInr, type ExpenseDraft } from "@/domain/expense";
 import { extractReceiptText } from "@/inference/ocr";
-import { parseExpenseText } from "@/inference/parser";
+import { parseExpenseInstruction } from "@/inference/parser";
+import { resolveSplitIntent, type CatalogPerson } from "@/inference/split-intent";
 import { createOnDeviceExtractor } from "@/inference/web-model";
 import type { ReceiptResult } from "@/inference/receipt";
 import { SplitEditor } from "./split-editor";
@@ -23,12 +24,38 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
   const [receipt, setReceipt] = useState<ReceiptResult | null>(null);
   const [images, setImages] = useState<File[]>([]);
   const [group, setGroup] = useState<ExpenseGroup | null>(null);
+  const [groups, setGroups] = useState<ExpenseGroup[]>([]);
+  const [savedPeople, setSavedPeople] = useState<CatalogPerson[]>([]);
+  const [inferredPeople, setInferredPeople] = useState<CatalogPerson[] | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void Promise.allSettled([fetch("/api/groups"), fetch("/api/people")]).then(async ([groupResult, peopleResult]) => {
+      if (!active) return;
+      if (groupResult.status === "fulfilled" && groupResult.value.ok) setGroups((await groupResult.value.json()).groups ?? []);
+      if (peopleResult.status === "fulfilled" && peopleResult.value.ok) setSavedPeople((await peopleResult.value.json()).people ?? []);
+    });
+    return () => { active = false; };
+  }, []);
+
+  function applyTextInference(expenseText: string, parsedDraft?: ExpenseDraft) {
+    const result = parseExpenseInstruction(expenseText, parsedDraft?.date ?? new Date().toISOString().slice(0, 10), { groups, people: savedPeople });
+    const nextDraft = parsedDraft ?? result.draft;
+    setDraft(nextDraft);
+    if (!result.splitIntent) { setGroup(null); setInferredPeople(null); return; }
+    const resolved = resolveSplitIntent(result.splitIntent, nextDraft.amountPaise, { groups, people: savedPeople });
+    setGroup(resolved.group as ExpenseGroup | null);
+    setInferredPeople(resolved.people);
+    setSplit({ status: resolved.status, allocations: resolved.allocations });
+    if (resolved.warning) setMessage(resolved.warning);
+  }
 
   async function extract(useModel = false) {
     if (images.length > 0) return readReceipts();
     setBusy(true); setMessage("");
     try {
-      setDraft(useModel ? await createOnDeviceExtractor().extract({ text }) : parseExpenseText(text));
+      if (useModel) applyTextInference(text, await createOnDeviceExtractor().extract({ text }));
+      else applyTextInference(text);
     } catch (error) { setMessage(error instanceof Error ? error.message : "Could not read expense"); }
     finally { setBusy(false); }
   }
@@ -44,12 +71,14 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
       if (!response.ok) throw new Error((await response.json()).error ?? "Ollama could not read the receipt");
       const result = await response.json() as ReceiptResult;
       setReceipt(result); setDraft(result.draft);
+      setGroup(result.group as ExpenseGroup | null);
+      setInferredPeople(result.people);
       setSplit({ status: result.status, allocations: result.allocations });
       setMessage(result.warning ?? "Receipt read locally. Check the items and split before saving.");
     } catch (ollamaError) {
       try {
         const receiptText = (await Promise.all(images.map((image) => extractReceiptText(image)))).join("\n\n");
-        setText(receiptText); setDraft(parseExpenseText(receiptText));
+        setText(receiptText); applyTextInference(receiptText);
         setMessage(`${ollamaError instanceof Error ? ollamaError.message : "Ollama unavailable"} Used on-device OCR instead; please check the result.`);
       } catch { setMessage("Automatic reading failed. Open Ollama or type the expense below."); }
     }
@@ -99,13 +128,13 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
         <div className="section-heading"><div><span className="step">2</span><h2>Check the details</h2></div><strong>{formatInr(draft.amountPaise)}</strong></div>
         <div className="field-grid"><label>Merchant<input value={draft.merchant} aria-invalid={Boolean(merchantError)} aria-describedby={merchantError ? "merchant-error" : undefined} onChange={(event) => { setDraft({ ...draft, merchant: event.target.value }); setMerchantError(""); }} />{merchantError && <small id="merchant-error" role="alert">{merchantError}</small>}</label><label>Date<input type="date" value={draft.date} onChange={(event) => setDraft({ ...draft, date: event.target.value })} /></label><label>Category<select value={draft.category ?? ""} onChange={(event) => setDraft({ ...draft, category: event.target.value })}><option value="">Uncategorized</option>{categories.map((category) => <option key={category}>{category}</option>)}</select></label></div>
       </section>
-      <GroupPicker onSelect={setGroup} />
+      <GroupPicker groups={groups} selectedId={group?.id ?? ""} onCreated={(created) => { setGroups((current) => [...current, created]); setSavedPeople((current) => [...current, ...created.people.filter((person) => !current.some((item) => item.id === person.id))]); }} onSelect={(selectedGroup) => { setGroup(selectedGroup); setInferredPeople(selectedGroup?.people ?? null); setSplit({ status: "needs_review", allocations: [] }); }} />
       {receipt && <section className="form-section receipt-review">
         <div className="section-heading"><div><span className="step">3</span><h2>Receipt items</h2></div><span className="model-badge">Qwen 3.5 9B (local Ollama)</span></div>
         <ul className="receipt-items">{receipt.items.map((item, index) => <li key={`${item.name}-${index}`}><span>{item.name}{item.personal && <small>Only me</small>}</span><strong>{formatInr(item.amountPaise)}</strong></li>)}</ul>
         {receipt.allocations.length > 0 && <><h3>Proposed allocation</h3><ul className="allocation-list">{receipt.allocations.map((allocation) => <li key={allocation.personId}><span>{receipt.people.find((person) => person.id === allocation.personId)?.name ?? allocation.personId}</span><strong>{formatInr(allocation.amountPaise)}</strong></li>)}</ul></>}
       </section>}
-      <SplitEditor key={`${draft.amountPaise}-${group?.id ?? "none"}`} amountPaise={draft.amountPaise} people={group?.people ?? receipt?.people ?? [{ id: "me", name: "Me" }]} onChange={setSplit} />
+      <SplitEditor key={`${draft.amountPaise}-${group?.id ?? "none"}-${(inferredPeople ?? []).map((person) => person.id).join("-")}`} amountPaise={draft.amountPaise} people={group?.people ?? inferredPeople ?? receipt?.people ?? [{ id: "me", name: "Me" }]} availablePeople={savedPeople} initialAllocations={split.allocations} onChange={setSplit} />
       <button className="save-button" type="button" onClick={save} disabled={busy}><Check size={18} />Confirm and save</button>
     </>}
     {message && <p className="form-message" role="status">{message}</p>}

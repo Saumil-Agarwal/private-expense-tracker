@@ -7,12 +7,13 @@ import { formatInr, rupeesToPaise } from "@/domain/expense";
 type Person = { id: string; name: string };
 type SplitValue = { status: "confirmed" | "needs_review"; allocations: Array<{ personId: string; amountPaise: number }> };
 
-export function SplitEditor({ amountPaise, people, onChange }: { amountPaise: number; people: Person[]; onChange: (value: SplitValue) => void }) {
+export function SplitEditor({ amountPaise, people, availablePeople = people, initialAllocations = [], onChange }: { amountPaise: number; people: Person[]; availablePeople?: Person[]; initialAllocations?: Array<{ personId: string; amountPaise: number }>; onChange: (value: SplitValue) => void }) {
   const [participants, setParticipants] = useState(people);
   const [selected, setSelected] = useState(() => new Set(people.map((person) => person.id)));
   const [newName, setNewName] = useState("");
   const [custom, setCustom] = useState(false);
   const [amounts, setAmounts] = useState<Record<string, string>>({});
+  const [existingPersonId, setExistingPersonId] = useState("");
   function personal() {
     setCustom(false);
     const result = calculateAllocations({ mode: "personal", totalPaise: amountPaise, ownerId: "me" });
@@ -30,6 +31,15 @@ export function SplitEditor({ amountPaise, people, onChange }: { amountPaise: nu
     setParticipants([...participants, person]);
     setSelected((current) => new Set(current).add(person.id));
     setNewName("");
+    onChange({ status: "needs_review", allocations: [] });
+  }
+  function addExistingPerson() {
+    const person = availablePeople.find((candidate) => candidate.id === existingPersonId);
+    if (!person || participants.some((candidate) => candidate.id === person.id || candidate.name.toLowerCase() === person.name.toLowerCase())) return;
+    setParticipants((current) => [...current, person]);
+    setSelected((current) => new Set(current).add(person.id));
+    setExistingPersonId("");
+    onChange({ status: "needs_review", allocations: [] });
   }
   function updateExact(personId: string, value: string) {
     const next = { ...amounts, [personId]: value };
@@ -48,8 +58,10 @@ export function SplitEditor({ amountPaise, people, onChange }: { amountPaise: nu
         <button type="button" onClick={() => setCustom(true)} disabled={selected.size < 1}>Custom amounts</button>
         <button type="button" onClick={() => onChange({ status: "needs_review", allocations: [] })}>Decide later</button>
       </div>
+      {initialAllocations.length > 0 && <ul className="allocation-list" aria-label="Proposed split">{initialAllocations.map((allocation) => <li key={allocation.personId}><span>{participants.find((person) => person.id === allocation.personId)?.name ?? allocation.personId}</span><strong>{formatInr(allocation.amountPaise)}</strong></li>)}</ul>}
+      {availablePeople.some((person) => !participants.some((current) => current.id === person.id)) && <div className="participant-row"><label>Existing person<select value={existingPersonId} onChange={(event) => setExistingPersonId(event.target.value)}><option value="">Select a person</option>{availablePeople.filter((person) => !participants.some((current) => current.id === person.id)).map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label><button type="button" className="button-quiet" disabled={!existingPersonId} onClick={addExistingPerson}>Add existing person</button></div>}
       <div className="participant-row"><label>Participant name<input value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="Rahul" /></label><button type="button" className="button-quiet" onClick={addPerson}>Add person</button></div>
-      <div className="people-chips">{participants.map((person) => <label key={person.id}><input type="checkbox" checked={selected.has(person.id)} onChange={() => setSelected((current) => { const next = new Set(current); if (next.has(person.id)) next.delete(person.id); else next.add(person.id); return next; })} />{person.name}</label>)}</div>
+      <div className="people-chips">{participants.map((person) => <label key={person.id}><input type="checkbox" checked={selected.has(person.id)} onChange={() => { setSelected((current) => { const next = new Set(current); if (next.has(person.id)) next.delete(person.id); else next.add(person.id); return next; }); onChange({ status: "needs_review", allocations: [] }); }} />{person.name}</label>)}</div>
       {custom && <div className="custom-split">{participants.filter((person) => selected.has(person.id)).map((person) => <label key={person.id}>{person.name}<input inputMode="decimal" value={amounts[person.id] ?? ""} onChange={(event) => updateExact(person.id, event.target.value)} placeholder="0.00" /></label>)}</div>}
     </section>
   );

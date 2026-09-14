@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { parseExpenseText } from "./parser";
+import { parseExpenseInstruction, parseExpenseText } from "./parser";
+
+const catalog = {
+  people: [{ id: "me", name: "Me" }, { id: "rahul-id", name: "Rahul" }, { id: "priya-id", name: "Priya" }],
+  groups: [{ id: "group-1", name: "Flatmates", people: [{ id: "me", name: "Me" }, { id: "rahul-id", name: "Rahul" }] }],
+};
 
 describe("parseExpenseText", () => {
   it.each([
@@ -18,5 +23,26 @@ describe("parseExpenseText", () => {
 
   it("does not guess when an amount is missing", () => {
     expect(() => parseExpenseText("Dinner at Bastian", "2026-09-06")).toThrow("Could not find an amount");
+  });
+
+  it("infers an equal split with named saved people", () => {
+    expect(parseExpenseInstruction("Dinner ₹1200 with Rahul and Priya, split equally", "2026-09-14", catalog).splitIntent).toEqual({
+      groupName: null, participantNames: ["Rahul", "Priya"], mode: "equal", shares: [],
+    });
+  });
+
+  it("infers a named saved group", () => {
+    const result = parseExpenseInstruction("Taxi ₹900 split with flatmates", "2026-09-14", catalog);
+    expect(result.draft.merchant).toBe("Taxi");
+    expect(result.splitIntent).toEqual({
+      groupName: "Flatmates", participantNames: [], mode: "equal", shares: [],
+    });
+  });
+
+  it("infers exact rupee shares for saved people", () => {
+    expect(parseExpenseInstruction("Dinner ₹1200; Rahul ₹700, Priya ₹500", "2026-09-14", catalog).splitIntent).toEqual({
+      groupName: null, participantNames: ["Rahul", "Priya"], mode: "exact",
+      shares: [{ personName: "Rahul", value: 700 }, { personName: "Priya", value: 500 }],
+    });
   });
 });

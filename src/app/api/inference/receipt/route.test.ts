@@ -1,8 +1,22 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { getLocalOwnerContext } from "@/server/local-owner";
 import { POST } from "./route";
 
+vi.mock("@/server/local-owner", () => ({ getLocalOwnerContext: vi.fn() }));
+
 afterEach(() => vi.unstubAllGlobals());
+
+beforeEach(() => {
+  const client = { from(table: string) {
+    const data = table === "groups"
+      ? [{ id: "11111111-1111-4111-8111-111111111111", name: "Flatmates", group_members: [{ people: { id: "owner-person", name: "Me", is_owner: true } }, { people: { id: "anish-id", name: "Anish", is_owner: false } }, { people: { id: "sanjeev-id", name: "Sanjeev", is_owner: false } }] }]
+      : [{ id: "owner-person", name: "Me", is_owner: true }, { id: "anish-id", name: "Anish", is_owner: false }, { id: "sanjeev-id", name: "Sanjeev", is_owner: false }];
+    return { select: () => ({ eq: async () => ({ data, error: null }) }) };
+  } } as unknown as SupabaseClient;
+  vi.mocked(getLocalOwnerContext).mockResolvedValue({ userId: "owner-1", supabase: client });
+});
 
 describe("POST /api/inference/receipt", () => {
   it("returns a validated receipt and split from image bytes", async () => {
@@ -17,7 +31,7 @@ describe("POST /api/inference/receipt", () => {
           { name: "Vedaka Tapioca Sago", amountRupees: 65, personal: false },
           { name: "Britannia Good Day Butter Cookies", amountRupees: 10, personal: true },
         ],
-        groupName: "201",
+        groupName: "Flatmates",
       }) },
     }), { status: 200, headers: { "content-type": "application/json" } })));
     const values = new Map<string, FormDataEntryValue | { type: string; size: number; arrayBuffer: () => Promise<ArrayBuffer> }>();
@@ -33,12 +47,17 @@ describe("POST /api/inference/receipt", () => {
     expect(response.status, JSON.stringify(body)).toBe(200);
     expect(body.allocations).toEqual([
       { personId: "me", amountPaise: 4800 },
-      { personId: "name:Anish", amountPaise: 2800 },
-      { personId: "name:Sanjeev", amountPaise: 2800 },
+      { personId: "anish-id", amountPaise: 2800 },
+      { personId: "sanjeev-id", amountPaise: 2800 },
     ]);
+    expect(body.group.id).toBe("11111111-1111-4111-8111-111111111111");
     expect(body.model).toBe("qwen3.5:9b-q4_K_M");
     const ollamaRequest = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string);
     expect(ollamaRequest.messages[0].images).toHaveLength(1);
+    expect(ollamaRequest.messages[0].content).toContain("Flatmates: Me, Anish, Sanjeev");
+    expect(ollamaRequest.messages[0].content).not.toContain("anish-id");
+    expect(ollamaRequest.messages[0].content).toContain("participantNames");
+    expect(ollamaRequest.format.properties).toHaveProperty("splitMode");
   });
 
   it("sends every queued screenshot to Ollama as one request", async () => {

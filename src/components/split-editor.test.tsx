@@ -52,4 +52,24 @@ describe("SplitEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "Only me" }));
     expect(onChange).toHaveBeenLastCalledWith({ status: "confirmed", allocations: [{ personId: "me", amountPaise: 10000 }] });
   });
+
+  it("adds a saved person from the existing people selector", () => {
+    const onChange = vi.fn();
+    render(<SplitEditor amountPaise={10000} people={[{ id: "me", name: "Me" }]} availablePeople={[{ id: "me", name: "Me" }, { id: "rahul-id", name: "Rahul" }]} onChange={onChange} />);
+
+    fireEvent.change(screen.getByLabelText("Existing person"), { target: { value: "rahul-id" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add existing person" }));
+    fireEvent.click(screen.getByRole("button", { name: "Split equally" }));
+
+    expect(onChange).toHaveBeenLastCalledWith({ status: "confirmed", allocations: [{ personId: "me", amountPaise: 5000 }, { personId: "rahul-id", amountPaise: 5000 }] });
+  });
+
+  it("invalidates an inferred split when participant selection changes", () => {
+    const onChange = vi.fn();
+    render(<SplitEditor amountPaise={10000} people={[{ id: "me", name: "Me" }, { id: "rahul-id", name: "Rahul" }]} initialAllocations={[{ personId: "me", amountPaise: 5000 }, { personId: "rahul-id", amountPaise: 5000 }]} onChange={onChange} />);
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Rahul" }));
+
+    expect(onChange).toHaveBeenLastCalledWith({ status: "needs_review", allocations: [] });
+  });
 });

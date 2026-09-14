@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { rupeesToPaise } from "@/domain/expense";
-import { buildReceiptResult, LOCAL_GROUPS } from "@/inference/receipt";
+import { buildReceiptResult } from "@/inference/receipt";
+import type { ParticipantCatalog } from "@/inference/split-intent";
 import { assertAllowedOutboundUrl } from "@/lib/privacy/network-policy";
+import { getLocalOwnerContext } from "@/server/local-owner";
 
 export const runtime = "nodejs";
 
@@ -17,6 +19,9 @@ const OllamaReceiptSchema = z.object({
   category: z.string().trim().min(1),
   items: z.array(z.object({ name: z.string().trim().min(1), amountRupees: z.number().nonnegative(), personal: z.boolean() })).min(1),
   groupName: z.string().trim().nullable(),
+  participantNames: z.array(z.string().trim().min(1)).default([]),
+  splitMode: z.enum(["equal", "exact", "percentage", "unresolved"]).default("unresolved"),
+  shares: z.array(z.object({ personName: z.string().trim().min(1), value: z.number().nonnegative() })).default([]),
 });
 
 const receiptJsonSchema = {
@@ -38,8 +43,11 @@ const receiptJsonSchema = {
       },
     },
     groupName: { anyOf: [{ type: "string" }, { type: "null" }] },
+    participantNames: { type: "array", items: { type: "string" } },
+    splitMode: { type: "string", enum: ["equal", "exact", "percentage", "unresolved"] },
+    shares: { type: "array", items: { type: "object", properties: { personName: { type: "string" }, value: { type: "number" } }, required: ["personName", "value"] } },
   },
-  required: ["merchant", "totalRupees", "category", "items", "groupName"],
+  required: ["merchant", "totalRupees", "category", "items", "groupName", "participantNames", "splitMode", "shares"],
 };
 
 export async function POST(request: Request) {
@@ -55,7 +63,21 @@ export async function POST(request: Request) {
     }
 
     assertAllowedOutboundUrl(OLLAMA_URL);
-    const groups = Object.entries(LOCAL_GROUPS).map(([name, people]) => `${name}: ${people.map((person) => person.name).join(", ")}`).join("; ");
+    const { userId, supabase } = await getLocalOwnerContext();
+    const [{ data: groupRows, error: groupError }, { data: personRows, error: peopleError }] = await Promise.all([
+      supabase.from("groups").select("id,name,group_members(people(id,name,is_owner))").eq("user_id", userId),
+      supabase.from("people").select("id,name,is_owner").eq("user_id", userId),
+    ]);
+    if (groupError || peopleError) throw groupError ?? peopleError;
+    type PersonRow = { id: string; name: string; is_owner: boolean };
+    type GroupRow = { id: string; name: string; group_members?: Array<{ people: PersonRow }> };
+    const mapPerson = (person: PersonRow) => ({ id: person.is_owner ? "me" : person.id, persistedId: person.id, name: person.name });
+    const catalog: ParticipantCatalog = {
+      people: ((personRows ?? []) as PersonRow[]).map(mapPerson),
+      groups: ((groupRows ?? []) as unknown as GroupRow[]).map((group) => ({ id: group.id, name: group.name, people: (group.group_members ?? []).map((member) => mapPerson(member.people)) })),
+    };
+    const groups = catalog.groups.map((group) => `${group.name}: ${group.people.map((person) => person.name).join(", ")}`).join("; ");
+    const people = catalog.people.map((person) => person.name).join(", ");
     const prompt = [
       `Read these ${images.length} screenshot(s) as parts of one expense and return one JSON object matching the supplied schema.`,
       "Report amounts in rupees exactly as displayed, including decimals. Use final charged prices, not crossed-out list prices.",
@@ -64,6 +86,8 @@ export async function POST(request: Request) {
       `Category must be one of: ${CATEGORIES.join(", ")}.`,
       "Mark personal=true only for items the user's instruction assigns exclusively to Me.",
       `Known groups: ${groups}. Set groupName to the matching group or null.`,
+      `Known people: ${people}. Put explicitly named saved people in participantNames. Never invent a person.`,
+      "Set splitMode to equal, exact, percentage, or unresolved. For exact shares use rupees in value; for percentage shares use percentages. Return shares as personName/value pairs.",
       `User instruction: ${instructions || "No special split instruction; leave groupName null."}` ,
     ].join("\n");
     const response = await fetch(OLLAMA_URL, {
@@ -88,8 +112,11 @@ export async function POST(request: Request) {
       category: ollamaReceipt.category,
       items: ollamaReceipt.items.map((item) => ({ name: item.name, amountPaise: rupeesToPaise(item.amountRupees), personal: item.personal })),
       groupName: ollamaReceipt.groupName,
+      participantNames: ollamaReceipt.participantNames,
+      splitMode: ollamaReceipt.splitMode,
+      shares: ollamaReceipt.shares,
     };
-    return NextResponse.json(buildReceiptResult(extracted, new Date().toISOString().slice(0, 10), MODEL));
+    return NextResponse.json(buildReceiptResult(extracted, new Date().toISOString().slice(0, 10), catalog, MODEL));
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Unknown error";
     const unavailable = /fetch failed|ECONNREFUSED|Ollama returned/.test(detail);

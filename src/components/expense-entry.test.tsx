@@ -21,10 +21,11 @@ describe("ExpenseEntry receipt input", () => {
         { personId: "name:Sanjeev", amountPaise: 2800 },
       ],
       people: [{ id: "me", name: "Me" }, { id: "name:Anish", name: "Anish" }, { id: "name:Sanjeev", name: "Sanjeev" }],
+      group: { id: "11111111-1111-4111-8111-111111111111", name: "Flatmates", people: [{ id: "me", name: "Me" }, { id: "name:Anish", name: "Anish" }, { id: "name:Sanjeev", name: "Sanjeev" }] },
       status: "confirmed",
       model: "qwen3.5:9b-q4_K_M",
     };
-    vi.stubGlobal("fetch", vi.fn().mockImplementation((url: string) => Promise.resolve(new Response(JSON.stringify(url === "/api/groups" ? { groups: [] } : receiptBody), { status: 200, headers: { "content-type": "application/json" } }))));
+    vi.stubGlobal("fetch", vi.fn().mockImplementation((url: string) => Promise.resolve(new Response(JSON.stringify(url === "/api/groups" ? { groups: [receiptBody.group] } : url === "/api/people" ? { people: receiptBody.people } : receiptBody), { status: 200, headers: { "content-type": "application/json" } }))));
     render(<ExpenseEntry initialText="Biscuits are for me; split the rest with 201" />);
     const image = new File([new Uint8Array([1])], "receipt.png", { type: "image/png" });
 
@@ -33,7 +34,7 @@ describe("ExpenseEntry receipt input", () => {
       clipboardData: { items: [image, second].map((file) => ({ kind: "file", type: "image/png", getAsFile: () => file })) },
     });
 
-    expect(fetch).not.toHaveBeenCalled();
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => url === "/api/inference/receipt")).toBe(false);
     expect(screen.getByText("receipt.png")).toBeInTheDocument();
     expect(screen.getByText("second.png")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
@@ -42,6 +43,7 @@ describe("ExpenseEntry receipt input", () => {
     const allocations = screen.getByRole("heading", { name: "Proposed allocation" }).nextElementSibling as HTMLElement;
     expect(within(allocations).getByText("Me").closest("li")).toHaveTextContent("₹48.00");
     expect(within(allocations).getByText("Anish").closest("li")).toHaveTextContent("₹28.00");
+    expect(screen.getByRole("combobox", { name: "Group" })).toHaveValue(receiptBody.group.id);
     await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([url]) => url === "/api/groups")).toBe(true));
     const receiptCall = vi.mocked(fetch).mock.calls.find(([url]) => url === "/api/inference/receipt")!;
     const form = receiptCall[1]?.body as FormData;
@@ -49,7 +51,7 @@ describe("ExpenseEntry receipt input", () => {
   });
 
   it("shows a field error and does not save a blank merchant", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ groups: [] }), { status: 200, headers: { "content-type": "application/json" } }));
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ groups: [], people: [] }), { status: 200, headers: { "content-type": "application/json" } })));
     vi.stubGlobal("fetch", fetchMock);
     render(<ExpenseEntry initialText="Dinner ₹100" />);
 
@@ -77,5 +79,28 @@ describe("ExpenseEntry receipt input", () => {
 
     const saveCall = fetchMock.mock.calls.find(([url]) => url === "/api/expenses")!;
     expect(saveCall[1]?.headers).toEqual({ "content-type": "application/json" });
+  });
+
+  it("selects an instructed saved group and submits its inferred equal split", async () => {
+    const group = { id: "11111111-1111-4111-8111-111111111111", name: "Flatmates", people: [{ id: "me", name: "Me" }, { id: "rahul-id", name: "Rahul" }] };
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url === "/api/groups") return Promise.resolve(new Response(JSON.stringify({ groups: [group] }), { status: 200 }));
+      if (url === "/api/people") return Promise.resolve(new Response(JSON.stringify({ people: group.people }), { status: 200 }));
+      return Promise.resolve(new Response(JSON.stringify({ id: "expense-1" }), { status: 201 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ExpenseEntry initialText="Dinner ₹100 split with Flatmates" />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/people"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
+
+    expect(await screen.findByRole("combobox", { name: "Group" })).toHaveValue(group.id);
+    fireEvent.click(screen.getByRole("button", { name: "Confirm and save" }));
+    await screen.findByText("Expense saved.");
+    const saveCall = fetchMock.mock.calls.find(([url]) => url === "/api/expenses")!;
+    expect(JSON.parse(saveCall[1]?.body as string)).toMatchObject({
+      groupId: group.id,
+      allocations: [{ personId: "me", amountPaise: 5000 }, { personId: "rahul-id", amountPaise: 5000 }],
+    });
   });
 });
