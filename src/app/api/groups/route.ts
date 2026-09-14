@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { personNameKey } from "@/domain/person";
 import { getLocalOwnerContext } from "@/server/local-owner";
 
 const CreateGroup = z.object({ name: z.string().trim().min(1).max(80), memberNames: z.array(z.string().trim().min(1).max(80)).min(1) });
@@ -32,11 +33,21 @@ export async function POST(request: Request) {
     const { data: group, error: groupError } = await supabase.from("groups").insert({ user_id: userId, name: input.name }).select("id,name").single();
     if (groupError || !group) throw groupError ?? new Error("Group was not created");
     createdGroup = { id: group.id as string, supabase };
+    const { data: existingPeople, error: existingPeopleError } = await supabase.from("people").select("id,name,is_owner").eq("user_id", userId);
+    if (existingPeopleError) throw existingPeopleError;
+    type PersonRow = { id: string; name: string; is_owner: boolean };
+    const peopleByName = new Map(((existingPeople ?? []) as PersonRow[]).map((person) => [personNameKey(person.name), person]));
     const people: Array<{ id: string; name: string; is_owner: boolean }> = [];
     for (const name of names) {
       const isOwner = name.toLowerCase() === "me";
-      const { data: person, error } = await supabase.from("people").upsert({ user_id: userId, name: isOwner ? "Me" : name, is_owner: isOwner }, { onConflict: "user_id,name" }).select("id,name,is_owner").single();
-      if (error || !person) throw error ?? new Error("Group member was not created");
+      const key = personNameKey(name);
+      let person = peopleByName.get(key);
+      if (!person) {
+        const { data, error } = await supabase.from("people").upsert({ user_id: userId, name: isOwner ? "Me" : name, is_owner: isOwner }, { onConflict: "user_id,name" }).select("id,name,is_owner").single();
+        if (error || !data) throw error ?? new Error("Group member was not created");
+        person = data as PersonRow;
+        peopleByName.set(key, person);
+      }
       people.push(person);
     }
     const { error: memberError } = await supabase.from("group_members").insert(people.map((person) => ({ user_id: userId, group_id: group.id, person_id: person.id })));

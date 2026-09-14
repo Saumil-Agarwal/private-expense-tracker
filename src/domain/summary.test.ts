@@ -29,4 +29,13 @@ describe("calculateSummary", () => {
     expect(result.workings[0]).toMatchObject({ allocatedPaise: 9999, differencePaise: 1, balanced: false });
     expect(result.balanced).toBe(false);
   });
+
+  it("combines differently-cased versions of a person's name into one total", () => {
+    const result = calculateSummary([
+      { id: "1", merchant: "Dinner", amount_paise: 6000, status: "confirmed", allocations: [{ person: "Rahul", amount_paise: 6000 }] },
+      { id: "2", merchant: "Cab", amount_paise: 2000, status: "confirmed", allocations: [{ person: " rahul ", amount_paise: 2000 }] },
+    ]);
+
+    expect(result.participantTotals).toEqual([{ person: "Rahul", amountPaise: 8000 }]);
+  });
 });
