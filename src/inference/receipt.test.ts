@@ -55,4 +55,17 @@ describe("buildReceiptResult", () => {
     expect(result.allocations).toEqual([{ personId: "rahul-id", amountPaise: 6000 }, { personId: "priya-id", amountPaise: 6000 }]);
     expect(result.status).toBe("confirmed");
   });
+
+  it("adds personal items to Me while sharing the remainder with named people", () => {
+    const result = buildReceiptResult({
+      merchant: "Cafe", totalPaise: 12000, category: "Restaurants",
+      items: [{ name: "Mine", amountPaise: 2000, personal: true }, { name: "Shared", amountPaise: 10000, personal: false }],
+      groupName: null, participantNames: ["Rahul", "Priya"], splitMode: "equal", shares: [],
+    }, "2026-09-14", catalog);
+
+    expect(result.allocations).toEqual([
+      { personId: "me", amountPaise: 5334 }, { personId: "rahul-id", amountPaise: 3333 }, { personId: "priya-id", amountPaise: 3333 },
+    ]);
+    expect(result.status).toBe("confirmed");
+  });
 });

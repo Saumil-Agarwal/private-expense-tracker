@@ -51,12 +51,21 @@ export function resolveSplitIntent(rawIntent: SplitIntent, amountPaise: number, 
     allocations = calculateAllocations({ mode: "equal", totalPaise: amountPaise, personIds: selectedIds }).allocations;
   } else if (!unresolved && intent.mode === "exact") {
     const resolvedShares = intent.shares.map((share) => ({ share, matches: peopleByKey.get(personNameKey(share.personName)) ?? [] }));
-    unresolved = resolvedShares.some(({ matches }) => matches.length !== 1);
+    const shareIds = resolvedShares.flatMap(({ matches }) => matches.length === 1 ? [matches[0].id] : []);
+    unresolved = resolvedShares.some(({ matches }) => matches.length !== 1)
+      || new Set(shareIds).size !== shareIds.length
+      || shareIds.length !== selectedIds.length
+      || shareIds.some((id) => !selectedIds.includes(id));
     if (!unresolved) allocations = resolvedShares.map(({ share, matches }) => ({ personId: matches[0].id, amountPaise: rupeesToPaise(share.value) }));
     if (allocations.reduce((sum, allocation) => sum + allocation.amountPaise, 0) !== amountPaise) unresolved = true;
   } else if (!unresolved && intent.mode === "percentage") {
     const resolvedShares = intent.shares.map((share) => ({ share, matches: peopleByKey.get(personNameKey(share.personName)) ?? [] }));
-    unresolved = resolvedShares.some(({ matches }) => matches.length !== 1) || Math.abs(intent.shares.reduce((sum, share) => sum + share.value, 0) - 100) > 0.0001;
+    const shareIds = resolvedShares.flatMap(({ matches }) => matches.length === 1 ? [matches[0].id] : []);
+    unresolved = resolvedShares.some(({ matches }) => matches.length !== 1)
+      || new Set(shareIds).size !== shareIds.length
+      || shareIds.length !== selectedIds.length
+      || shareIds.some((id) => !selectedIds.includes(id))
+      || Math.abs(intent.shares.reduce((sum, share) => sum + share.value, 0) - 100) > 0.0001;
     if (!unresolved) {
       allocations = resolvedShares.map(({ share, matches }) => ({ personId: matches[0].id, amountPaise: Math.floor(amountPaise * share.value / 100) }));
       let remainder = amountPaise - allocations.reduce((sum, allocation) => sum + allocation.amountPaise, 0);

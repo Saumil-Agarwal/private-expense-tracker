@@ -12,7 +12,7 @@ export function SplitEditor({ amountPaise, people, availablePeople = people, ini
   const [selected, setSelected] = useState(() => new Set(people.map((person) => person.id)));
   const [newName, setNewName] = useState("");
   const [custom, setCustom] = useState(false);
-  const [amounts, setAmounts] = useState<Record<string, string>>({});
+  const [amounts, setAmounts] = useState<Record<string, string>>(() => Object.fromEntries(initialAllocations.map((allocation) => [allocation.personId, String(allocation.amountPaise / 100)])));
   const [existingPersonId, setExistingPersonId] = useState("");
   function personal() {
     setCustom(false);

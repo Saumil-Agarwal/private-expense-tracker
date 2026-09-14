@@ -27,13 +27,16 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
   const [groups, setGroups] = useState<ExpenseGroup[]>([]);
   const [savedPeople, setSavedPeople] = useState<CatalogPerson[]>([]);
   const [inferredPeople, setInferredPeople] = useState<CatalogPerson[] | null>(null);
+  const [catalogWarning, setCatalogWarning] = useState("");
 
   useEffect(() => {
     let active = true;
     void Promise.allSettled([fetch("/api/groups"), fetch("/api/people")]).then(async ([groupResult, peopleResult]) => {
       if (!active) return;
       if (groupResult.status === "fulfilled" && groupResult.value.ok) setGroups((await groupResult.value.json()).groups ?? []);
+      else setCatalogWarning("Saved groups could not be loaded; review the split manually.");
       if (peopleResult.status === "fulfilled" && peopleResult.value.ok) setSavedPeople((await peopleResult.value.json()).people ?? []);
+      else setCatalogWarning("Saved people could not be loaded; review the split manually.");
     });
     return () => { active = false; };
   }, []);
@@ -42,10 +45,19 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
     const result = parseExpenseInstruction(expenseText, parsedDraft?.date ?? new Date().toISOString().slice(0, 10), { groups, people: savedPeople });
     const nextDraft = parsedDraft ?? result.draft;
     setDraft(nextDraft);
-    if (!result.splitIntent) { setGroup(null); setInferredPeople(null); return; }
+    if (!result.splitIntent) { setGroup(null); setInferredPeople(null); setSplit({ status: "needs_review", allocations: [] }); return; }
     const resolved = resolveSplitIntent(result.splitIntent, nextDraft.amountPaise, { groups, people: savedPeople });
     setGroup(resolved.group as ExpenseGroup | null);
     setInferredPeople(resolved.people);
+    setSplit({ status: resolved.status, allocations: resolved.allocations });
+    if (resolved.warning) setMessage(resolved.warning);
+  }
+
+  function applyResolvedInference(nextDraft: ExpenseDraft, splitIntent?: Parameters<typeof resolveSplitIntent>[0]) {
+    setDraft(nextDraft);
+    if (!splitIntent) { setGroup(null); setInferredPeople(null); setSplit({ status: "needs_review", allocations: [] }); return; }
+    const resolved = resolveSplitIntent(splitIntent, nextDraft.amountPaise, { groups, people: savedPeople });
+    setGroup(resolved.group as ExpenseGroup | null); setInferredPeople(resolved.people);
     setSplit({ status: resolved.status, allocations: resolved.allocations });
     if (resolved.warning) setMessage(resolved.warning);
   }
@@ -54,7 +66,11 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
     if (images.length > 0) return readReceipts();
     setBusy(true); setMessage("");
     try {
-      if (useModel) applyTextInference(text, await createOnDeviceExtractor().extract({ text }));
+      if (useModel) {
+        const result = await createOnDeviceExtractor().extract({ text }, { groups, people: savedPeople });
+        if (result.splitIntent) applyResolvedInference(result.draft, result.splitIntent);
+        else applyTextInference(text, result.draft);
+      }
       else applyTextInference(text);
     } catch (error) { setMessage(error instanceof Error ? error.message : "Could not read expense"); }
     finally { setBusy(false); }
@@ -134,9 +150,10 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
         <ul className="receipt-items">{receipt.items.map((item, index) => <li key={`${item.name}-${index}`}><span>{item.name}{item.personal && <small>Only me</small>}</span><strong>{formatInr(item.amountPaise)}</strong></li>)}</ul>
         {receipt.allocations.length > 0 && <><h3>Proposed allocation</h3><ul className="allocation-list">{receipt.allocations.map((allocation) => <li key={allocation.personId}><span>{receipt.people.find((person) => person.id === allocation.personId)?.name ?? allocation.personId}</span><strong>{formatInr(allocation.amountPaise)}</strong></li>)}</ul></>}
       </section>}
-      <SplitEditor key={`${draft.amountPaise}-${group?.id ?? "none"}-${(inferredPeople ?? []).map((person) => person.id).join("-")}`} amountPaise={draft.amountPaise} people={group?.people ?? inferredPeople ?? receipt?.people ?? [{ id: "me", name: "Me" }]} availablePeople={savedPeople} initialAllocations={split.allocations} onChange={setSplit} />
+      <SplitEditor key={`${draft.amountPaise}-${group?.id ?? "none"}-${(inferredPeople ?? []).map((person) => person.id).join("-")}`} amountPaise={draft.amountPaise} people={inferredPeople ?? group?.people ?? receipt?.people ?? [{ id: "me", name: "Me" }]} availablePeople={savedPeople} initialAllocations={split.allocations} onChange={setSplit} />
       <button className="save-button" type="button" onClick={save} disabled={busy}><Check size={18} />Confirm and save</button>
     </>}
     {message && <p className="form-message" role="status">{message}</p>}
+    {catalogWarning && <p className="form-message" role="status">{catalogWarning}</p>}
   </div>;
 }

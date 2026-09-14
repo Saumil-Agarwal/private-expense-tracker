@@ -66,7 +66,7 @@ export async function POST(request: Request) {
     const { userId, supabase } = await getLocalOwnerContext();
     const [{ data: groupRows, error: groupError }, { data: personRows, error: peopleError }] = await Promise.all([
       supabase.from("groups").select("id,name,group_members(people(id,name,is_owner))").eq("user_id", userId),
-      supabase.from("people").select("id,name,is_owner").eq("user_id", userId),
+      supabase.from("people").select("id,name,is_owner").eq("user_id", userId).eq("is_active", true),
     ]);
     if (groupError || peopleError) throw groupError ?? peopleError;
     type PersonRow = { id: string; name: string; is_owner: boolean };

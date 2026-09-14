@@ -42,4 +42,10 @@ describe("resolveSplitIntent", () => {
       selectedIds: ["rahul-id"], allocations: [], status: "needs_review",
     });
   });
+
+  it("rejects duplicate exact shares for one person", () => {
+    expect(resolveSplitIntent({ groupName: null, participantNames: ["Rahul"], mode: "exact", shares: [{ personName: "Rahul", value: 60 }, { personName: "rahul", value: 40 }] }, 10000, catalog)).toMatchObject({
+      allocations: [], status: "needs_review",
+    });
+  });
 });

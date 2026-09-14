@@ -103,4 +103,23 @@ describe("ExpenseEntry receipt input", () => {
       allocations: [{ personId: "me", amountPaise: 5000 }, { personId: "rahul-id", amountPaise: 5000 }],
     });
   });
+
+  it("does not retain a previous split when a replacement draft has no split instruction", async () => {
+    const group = { id: "11111111-1111-4111-8111-111111111111", name: "Flatmates", people: [{ id: "me", name: "Me" }, { id: "rahul-id", name: "Rahul" }] };
+    const fetchMock = vi.fn().mockImplementation((url: string) => Promise.resolve(new Response(JSON.stringify(url === "/api/groups" ? { groups: [group] } : url === "/api/people" ? { people: group.people } : { id: "expense-1" }), { status: url === "/api/expenses" ? 201 : 200 })));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ExpenseEntry initialText="Dinner ₹100 split with Flatmates" />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/people"));
+    fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
+    await screen.findByRole("combobox", { name: "Group" });
+
+    fireEvent.change(screen.getByLabelText("Expense details and split instructions"), { target: { value: "Lunch ₹100" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Group" })).toHaveValue(""));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm and save" }));
+
+    await screen.findByText("Expense saved.");
+    const saveCall = fetchMock.mock.calls.find(([url]) => url === "/api/expenses")!;
+    expect(JSON.parse(saveCall[1]?.body as string)).toMatchObject({ status: "needs_review", allocations: [] });
+  });
 });

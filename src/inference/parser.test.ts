@@ -45,4 +45,16 @@ describe("parseExpenseText", () => {
       shares: [{ personName: "Rahul", value: 700 }, { personName: "Priya", value: 500 }],
     });
   });
+
+  it("keeps an unknown explicitly named participant unresolved", () => {
+    expect(parseExpenseInstruction("Dinner ₹1200 with Rahul and Nobody, split equally", "2026-09-14", catalog).splitIntent).toMatchObject({
+      participantNames: ["Rahul", "Nobody"], mode: "equal",
+    });
+  });
+
+  it("keeps an explicit participant subset alongside a named group", () => {
+    expect(parseExpenseInstruction("Dinner ₹1200 with Rahul from Flatmates, split equally", "2026-09-14", catalog).splitIntent).toMatchObject({
+      groupName: "Flatmates", participantNames: ["Rahul"], mode: "equal",
+    });
+  });
 });

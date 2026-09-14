@@ -54,6 +54,12 @@ function mentions(text: string, name: string) {
 export function parseExpenseInstruction(text: string, date: string, catalog: ParticipantCatalog): { draft: ExpenseDraft; splitIntent?: SplitIntent } {
   const draft = parseExpenseText(text, date);
   const group = catalog.groups.find((candidate) => mentions(text, candidate.name));
+  const mentionedPeople = catalog.people.filter((person) => mentions(text, person.name)).map((person) => person.name);
+  const groupBoundary = group ? `\\s+from\\s+${escaped(group.name)}` : "(?=,\\s*split|\\s+split|$)";
+  const participantPhrase = text.match(new RegExp(`\\bwith\\s+(.+?)(?:${groupBoundary}|,\\s*split|\\s+split|$)`, "iu"))?.[1]?.trim();
+  const explicitNames = participantPhrase && (!group || participantPhrase.toLocaleLowerCase() !== group.name.toLocaleLowerCase())
+    ? participantPhrase.split(/\s*(?:,|\band\b)\s*/iu).filter(Boolean).map((name) => catalog.people.find((person) => person.name.toLocaleLowerCase() === name.toLocaleLowerCase())?.name ?? name)
+    : mentionedPeople;
   const exactShares = catalog.people.flatMap((person) => {
     const match = text.match(new RegExp(`\\b${escaped(person.name)}\\b\\s*(?:[:=-]?\\s*)(?:₹|rs\\.?|inr)\\s*([\\d,]+(?:\\.\\d{1,2})?)`, "iu"));
     return match ? [{ personName: person.name, value: Number(match[1].replaceAll(",", "")) }] : [];
@@ -66,7 +72,7 @@ export function parseExpenseInstruction(text: string, date: string, catalog: Par
     ? exactShares.map((share) => share.personName)
     : percentageShares.length
       ? percentageShares.map((share) => share.personName)
-      : group ? [] : catalog.people.filter((person) => mentions(text, person.name)).map((person) => person.name);
+      : explicitNames;
   let mode: SplitIntent["mode"] = "unresolved";
   let shares: SplitIntent["shares"] = [];
   if (exactShares.length) { mode = "exact"; shares = exactShares; }

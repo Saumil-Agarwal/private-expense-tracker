@@ -71,13 +71,20 @@ export function buildReceiptResult(raw: unknown, date: string, catalog: Particip
     }, receipt.totalPaise, catalog);
     return { draft, items: receipt.items, allocations: resolved.allocations, people: resolved.people.length ? resolved.people : people, status: resolved.status, warning: resolved.warning, model, group: resolved.group };
   }
-  if (!group || people.length === 1) return { draft, items: receipt.items, allocations: [], people, status: "needs_review", warning: "Choose who should share this expense.", model, group };
+  let sharedPeople = people;
+  if (!group && receipt.participantNames.length) {
+    const resolved = resolveSplitIntent({ groupName: null, participantNames: receipt.participantNames, mode: "equal", shares: [] }, receipt.totalPaise, catalog);
+    if (resolved.status === "needs_review") return { draft, items: receipt.items, allocations: [], people: resolved.people, status: "needs_review", warning: resolved.warning, model, group: null };
+    const owner = catalog.people.find((person) => person.id === "me") ?? { id: "me", name: "Me" };
+    sharedPeople = [owner, ...resolved.people.filter((person) => person.id !== "me")];
+  }
+  if (sharedPeople.length === 1) return { draft, items: receipt.items, allocations: [], people: sharedPeople, status: "needs_review", warning: "Choose who should share this expense.", model, group };
   const allocation = calculateAllocations({
     mode: "shared-remainder",
     totalPaise: receipt.totalPaise,
     ownerId: "me",
     personalPaise,
-    personIds: people.map((person) => person.id),
+    personIds: sharedPeople.map((person) => person.id),
   });
-  return { draft, items: receipt.items, allocations: allocation.allocations, people, status: "confirmed", model, group };
+  return { draft, items: receipt.items, allocations: allocation.allocations, people: sharedPeople, status: "confirmed", model, group };
 }

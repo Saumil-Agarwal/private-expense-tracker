@@ -13,7 +13,9 @@ beforeEach(() => {
     const data = table === "groups"
       ? [{ id: "11111111-1111-4111-8111-111111111111", name: "Flatmates", group_members: [{ people: { id: "owner-person", name: "Me", is_owner: true } }, { people: { id: "anish-id", name: "Anish", is_owner: false } }, { people: { id: "sanjeev-id", name: "Sanjeev", is_owner: false } }] }]
       : [{ id: "owner-person", name: "Me", is_owner: true }, { id: "anish-id", name: "Anish", is_owner: false }, { id: "sanjeev-id", name: "Sanjeev", is_owner: false }];
-    return { select: () => ({ eq: async () => ({ data, error: null }) }) };
+    return table === "people"
+      ? { select: () => ({ eq: () => ({ eq: async () => ({ data, error: null }) }) }) }
+      : { select: () => ({ eq: async () => ({ data, error: null }) }) };
   } } as unknown as SupabaseClient;
   vi.mocked(getLocalOwnerContext).mockResolvedValue({ userId: "owner-1", supabase: client });
 });

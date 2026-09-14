@@ -72,4 +72,13 @@ describe("SplitEditor", () => {
 
     expect(onChange).toHaveBeenLastCalledWith({ status: "needs_review", allocations: [] });
   });
+
+  it("prefills custom inputs from an inferred allocation", () => {
+    render(<SplitEditor amountPaise={10000} people={[{ id: "me", name: "Me" }, { id: "rahul-id", name: "Rahul" }]} initialAllocations={[{ personId: "me", amountPaise: 6000 }, { personId: "rahul-id", amountPaise: 4000 }]} onChange={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Custom amounts" }));
+
+    expect(screen.getAllByLabelText("Me").at(-1)).toHaveValue("60");
+    expect(screen.getAllByLabelText("Rahul").at(-1)).toHaveValue("40");
+  });
 });
