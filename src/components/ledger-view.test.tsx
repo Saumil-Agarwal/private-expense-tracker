@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LedgerView } from "./ledger-view";
@@ -26,6 +26,23 @@ describe("LedgerView reconciliation", () => {
 
     expect(await screen.findByText("Trash is empty.")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith("/api/expenses?trash=true");
+  });
+
+  it("moves an expense to trash directly from the ledger and removes it immediately", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ transactions: [
+        { id: "expense-1", occurred_on: "2026-09-09", created_at: "2026-09-09T12:00:00Z", merchant: "Dinner", amount_paise: 9000, status: "confirmed", categories: null, groups: null, allocations: [] },
+      ] }), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "expense-1", deleted_at: "2026-09-15T00:00:00Z" }), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("confirm", vi.fn().mockReturnValue(true));
+
+    render(<LedgerView />);
+    fireEvent.click(await screen.findByRole("button", { name: "Delete Dinner" }));
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenLastCalledWith("/api/expenses/expense-1", expect.objectContaining({ method: "PATCH", body: JSON.stringify({ action: "trash" }) })));
+    await vi.waitFor(() => expect(screen.queryByText("Dinner")).not.toBeInTheDocument());
+    expect(screen.getByText("No expenses yet.")).toBeInTheDocument();
   });
 
   it("shows the verified aggregate equation and per-expense result", async () => {

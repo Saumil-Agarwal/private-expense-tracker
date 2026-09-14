@@ -65,12 +65,12 @@ export async function GET(request: Request) {
   try {
     const { userId, supabase } = await getLocalOwnerContext();
     const url = new URL(request.url);
-    let query = supabase.from("transactions").select("id,occurred_on,merchant,amount_paise,status,deleted_at,categories(name),groups(id,name),allocations(amount_paise,people(name))").eq("user_id", userId);
+    let query = supabase.from("transactions").select("id,occurred_on,created_at,merchant,amount_paise,status,deleted_at,categories(name),groups(id,name),allocations(amount_paise,people(name))").eq("user_id", userId);
     const from = url.searchParams.get("from"); const to = url.searchParams.get("to");
     query = url.searchParams.get("trash") === "true" ? query.not("deleted_at", "is", null) : query.is("deleted_at", null);
     if (from) query = query.gte("occurred_on", from);
     if (to) query = query.lte("occurred_on", to);
-    query = query.order("occurred_on", { ascending: false });
+    query = query.order("created_at", { ascending: false });
     if (!from && !to) query = query.limit(100);
     const { data, error } = await query;
     if (error) throw error;

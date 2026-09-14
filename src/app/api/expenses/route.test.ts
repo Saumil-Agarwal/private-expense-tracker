@@ -97,4 +97,21 @@ describe("POST /api/expenses", () => {
     expect(filters).toContainEqual(expectedFilter);
     expect(filters).toContainEqual(["eq", "user_id", "owner-1"]);
   });
+
+  it("orders the most recently added expense first", async () => {
+    const orders: unknown[][] = [];
+    const query = {
+      eq: () => query,
+      is: () => query,
+      order: (...args: unknown[]) => { orders.push(args); return query; },
+      limit: () => query,
+      then: (resolve: (value: unknown) => void) => resolve({ data: [], error: null }),
+    };
+    const client = { from: () => ({ select: () => query }) } as unknown as SupabaseClient;
+    vi.mocked(getLocalOwnerContext).mockResolvedValue({ userId: "owner-1", supabase: client });
+
+    await GET(new Request("http://localhost/api/expenses"));
+
+    expect(orders[0]).toEqual(["created_at", { ascending: false }]);
+  });
 });
