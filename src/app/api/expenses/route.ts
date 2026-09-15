@@ -49,7 +49,7 @@ export async function POST(request: Request) {
       ownerPersonId = me.id as string;
     }
     if (expense.items.length) {
-      const rows = expense.items.map((item) => ({ user_id: userId, transaction_id: transaction.id, name: item.name, quantity: 1, amount_paise: item.amountPaise, owner_person_id: item.personal ? ownerPersonId : null }));
+      const rows = expense.items.map((item) => ({ user_id: userId, transaction_id: transaction.id, name: item.name, quantity: item.quantity, amount_paise: item.amountPaise, owner_person_id: item.personal ? ownerPersonId : null }));
       const { error: itemError } = await supabase.from("transaction_items").insert(rows);
       if (itemError) throw itemError;
     }

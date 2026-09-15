@@ -9,6 +9,7 @@ export const AllocationSchema = z.object({
 
 export const ExpenseItemSchema = z.object({
   name: z.string().trim().min(1),
+  quantity: z.number().positive().default(1),
   amountPaise: z.number().int().nonnegative(),
   personal: z.boolean().default(false),
 });

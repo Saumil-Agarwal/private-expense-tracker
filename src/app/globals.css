@@ -153,12 +153,23 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .detail-list li:last-child { border: 0; }
 .detail-list li > span { display: grid; gap: 4px; }
 .detail-actions { display: flex; gap: 10px; justify-content: flex-end; }
+.notes-field { display: block; margin-top: 14px; color: var(--muted); font-size: 12px; }
+.notes-field textarea { margin-top: 6px; color: var(--ink); }
+.item-editor-list { display: grid; gap: 12px; }
+.item-editor-row { display: grid; grid-template-columns: 2fr .7fr 1fr auto auto; gap: 10px; align-items: end; }
+.item-editor-row label { color: var(--muted); font-size: 12px; }
+.item-editor-row input { margin-top: 6px; color: var(--ink); }
+.item-editor-row .checkbox-label { display: flex; align-items: center; gap: 6px; padding-bottom: 11px; color: var(--ink); }
+.item-editor-row .checkbox-label input { margin: 0; width: auto; }
+.icon-button { border: 1px solid var(--line); background: transparent; border-radius: 9px; padding: 10px; margin-bottom: 1px; }
+.editor-actions { display: flex; justify-content: flex-end; align-items: center; gap: 10px; padding: 20px 24px 24px; }
+.editor-actions .save-button { width: auto; margin: 0; }
 .button-danger { display: inline-flex; align-items: center; justify-content: center; border-radius: 11px; padding: 11px 14px; border: 1px solid #a6322b; background: #a6322b; color: white; }
 .detail-error { color: #9d342d; margin: 0; }
 @media (max-width: 650px) {
   .app-header { align-items: flex-start; }
   .local-badge { display: none; }
-  .field-grid, .summary-grid { grid-template-columns: 1fr; }
+  .field-grid, .summary-grid, .item-editor-row { grid-template-columns: 1fr; }
   .entry-actions > *, .choice-grid button { flex: 1 1 140px; }
   .app-nav { width: calc(100% - 28px); justify-content: space-between; }
   .app-nav a { flex: 1; justify-content: center; }

@@ -65,6 +65,28 @@ describe("/api/expenses/[id]", () => {
     expect(calls).toContainEqual(["eq", "user_id", "owner-1"]);
   });
 
+  it("updates every editable expense field through one owner-scoped database call", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: "tx-1", error: null });
+    const client = { rpc } as unknown as SupabaseClient;
+    vi.mocked(getLocalOwnerContext).mockResolvedValue({ userId: "owner-1", supabase: client });
+    const expense = {
+      merchant: "Updated market", amountPaise: 18750, currency: "INR", date: "2026-09-15",
+      category: "Groceries", groupId: "11111111-1111-4111-8111-111111111111", notes: "Monthly shop",
+      status: "confirmed", source: "receipt",
+      allocations: [{ personId: "person-1", amountPaise: 18750 }],
+      items: [{ name: "Rice", quantity: 2, amountPaise: 18750, personal: true }],
+    };
+
+    const response = await PATCH(new Request("http://localhost/api/expenses/tx-1", {
+      method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(expense),
+    }), context);
+
+    expect(response.status).toBe(200);
+    expect(rpc).toHaveBeenCalledWith("update_expense", {
+      p_transaction_id: "tx-1", p_user_id: "owner-1", p_expense: expense,
+    });
+  });
+
   it("permanently deletes only an already-trashed owner-scoped expense", async () => {
     const { client, calls } = fakeClient({ data: { id: "tx-1" }, error: null });
     vi.mocked(getLocalOwnerContext).mockResolvedValue({ userId: "owner-1", supabase: client });

@@ -52,7 +52,7 @@ describe("ExpenseEntry receipt input", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirm and save" }));
     await screen.findByText("Expense saved.");
     const saveCall = vi.mocked(fetch).mock.calls.find(([url]) => url === "/api/expenses")!;
-    expect(JSON.parse(saveCall[1]?.body as string).items).toEqual(receiptBody.items);
+    expect(JSON.parse(saveCall[1]?.body as string).items).toEqual(receiptBody.items.map((item) => ({ ...item, quantity: 1 })));
   });
 
   it("shows a field error and does not save a blank merchant", async () => {

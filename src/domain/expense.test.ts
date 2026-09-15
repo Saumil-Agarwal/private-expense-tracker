@@ -31,6 +31,6 @@ describe("ExpenseDraftSchema", () => {
       items: [{ name: "Milk", amountPaise: 1000, personal: true }],
     });
 
-    expect(expense.items).toEqual([{ name: "Milk", amountPaise: 1000, personal: true }]);
+    expect(expense.items).toEqual([{ name: "Milk", quantity: 1, amountPaise: 1000, personal: true }]);
   });
 });
