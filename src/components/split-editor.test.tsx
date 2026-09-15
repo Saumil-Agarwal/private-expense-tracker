@@ -53,12 +53,13 @@ describe("SplitEditor", () => {
     expect(onChange).toHaveBeenLastCalledWith({ status: "confirmed", allocations: [{ personId: "me", amountPaise: 10000 }] });
   });
 
-  it("adds a saved person from the existing people selector", () => {
+  it("shows saved people as checkboxes and includes a checked person in the split", () => {
     const onChange = vi.fn();
     render(<SplitEditor amountPaise={10000} people={[{ id: "me", name: "Me" }]} availablePeople={[{ id: "me", name: "Me" }, { id: "rahul-id", name: "Rahul" }]} onChange={onChange} />);
 
-    fireEvent.change(screen.getByLabelText("Existing person"), { target: { value: "rahul-id" } });
-    fireEvent.click(screen.getByRole("button", { name: "Add existing person" }));
+    expect(screen.queryByRole("combobox", { name: "Existing person" })).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Rahul" })).not.toBeChecked();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Rahul" }));
     fireEvent.click(screen.getByRole("button", { name: "Split equally" }));
 
     expect(onChange).toHaveBeenLastCalledWith({ status: "confirmed", allocations: [{ personId: "me", amountPaise: 5000 }, { personId: "rahul-id", amountPaise: 5000 }] });
