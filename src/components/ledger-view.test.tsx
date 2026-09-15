@@ -58,6 +58,16 @@ describe("LedgerView reconciliation", () => {
     expect(screen.getByText("Dinner").closest("article")).toHaveTextContent("Verified");
   });
 
+  it("links each participant summary to that person's expense page", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ transactions: [
+      { id: "1", occurred_on: "2026-09-09", merchant: "Dinner", amount_paise: 9000, status: "confirmed", categories: null, groups: null, allocations: [{ person: "Anish Mehta", amount_paise: 9000 }] },
+    ] }), { status: 200, headers: { "content-type": "application/json" } })));
+
+    render(<LedgerView summary />);
+
+    expect(await screen.findByRole("link", { name: /Anish Mehta/ })).toHaveAttribute("href", "/people/Anish%20Mehta");
+  });
+
   it("surfaces a one-paise stored mismatch", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ transactions: [
       { id: "1", occurred_on: "2026-09-09", merchant: "Dinner", amount_paise: 10000, status: "confirmed", categories: null, groups: null, allocations: [{ person: "Me", amount_paise: 9999 }] },
