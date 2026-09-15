@@ -14,7 +14,23 @@ export const ExpenseItemSchema = z.object({
   personal: z.boolean().default(false),
 });
 
-export const ExpenseDraftSchema = z.object({
+export const EXPENSE_DATE_RANGE_MESSAGE = "Expense date must be within the last 6 months. Correct the date before saving.";
+
+function sixMonthsAgo(referenceDate: Date): string {
+  const year = referenceDate.getUTCFullYear();
+  const month = referenceDate.getUTCMonth() - 6;
+  const day = referenceDate.getUTCDate();
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(year, month, Math.min(day, lastDay))).toISOString().slice(0, 10);
+}
+
+function validateExpenseDate(expense: { date: string }, context: z.RefinementCtx) {
+  if (expense.date < sixMonthsAgo(new Date())) {
+    context.addIssue({ code: "custom", message: EXPENSE_DATE_RANGE_MESSAGE, path: ["date"] });
+  }
+}
+
+const ExpenseDraftBaseSchema = z.object({
   merchant: z.string().trim().min(1),
   amountPaise: z.number().int().positive(),
   currency: z.literal("INR").default("INR"),
@@ -27,11 +43,14 @@ export const ExpenseDraftSchema = z.object({
   source: z.enum(["manual", "receipt", "ollama", "on_device_model"]).default("manual"),
 });
 
-export const ConfirmedExpenseSchema = ExpenseDraftSchema.extend({
+export const ExpenseDraftSchema = ExpenseDraftBaseSchema.superRefine(validateExpenseDate);
+
+export const ConfirmedExpenseSchema = ExpenseDraftBaseSchema.extend({
   status: z.enum(["confirmed", "needs_review"]),
   allocations: z.array(AllocationSchema),
   items: z.array(ExpenseItemSchema).default([]),
 }).superRefine((expense, context) => {
+  validateExpenseDate(expense, context);
   const allocated = expense.allocations.reduce((sum, allocation) => sum + allocation.amountPaise, 0);
   if (expense.status === "confirmed" && allocated !== expense.amountPaise) {
     context.addIssue({ code: "custom", message: "Confirmed allocations must equal the expense total", path: ["allocations"] });

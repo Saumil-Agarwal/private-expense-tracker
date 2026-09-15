@@ -20,6 +20,13 @@ describe("ExpenseDraftSchema", () => {
     expect(() => ExpenseDraftSchema.parse({ merchant: "Cafe", amountPaise: 0, currency: "INR", date: "2026-09-06", status: "draft" })).toThrow();
   });
 
+  it("rejects an expense dated more than six months before filing", () => {
+    const result = ExpenseDraftSchema.safeParse({ merchant: "Cafe", amountPaise: 1000, currency: "INR", date: "2024-08-07", status: "draft" });
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.flatten().fieldErrors.date).toEqual(["Expense date must be within the last 6 months. Correct the date before saving."]);
+  });
+
   it("converts rupees to integer paise", () => {
     expect(rupeesToPaise("1,234.56")).toBe(123456);
   });

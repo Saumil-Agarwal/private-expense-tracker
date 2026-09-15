@@ -4,7 +4,7 @@ import { Check, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { ConfirmedExpenseSchema, rupeesToPaise } from "@/domain/expense";
+import { ConfirmedExpenseSchema, EXPENSE_DATE_RANGE_MESSAGE, rupeesToPaise } from "@/domain/expense";
 import { GroupPicker, type ExpenseGroup } from "./group-picker";
 import { SplitEditor } from "./split-editor";
 
@@ -60,7 +60,7 @@ export function ExpenseEditor({ expense, onCancel }: { expense: EditableExpense;
       notes: notes || undefined, status: split.status, source: expense.source, allocations: split.allocations,
       items: items.map((item) => ({ name: item.name, quantity: Number(item.quantity), amountPaise: rupeesToPaise(item.amount), personal: item.personal })),
     });
-    if (!parsed.success) { setMessage("Check the expense details, items, and split totals."); return; }
+    if (!parsed.success) { setMessage(parsed.error.issues.some((issue) => issue.path[0] === "date") ? EXPENSE_DATE_RANGE_MESSAGE : "Check the expense details, items, and split totals."); return; }
     setBusy(true);
     try {
       const response = await fetch(`/api/expenses/${expense.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(parsed.data) });

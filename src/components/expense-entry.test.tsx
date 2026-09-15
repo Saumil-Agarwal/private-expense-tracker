@@ -155,4 +155,18 @@ describe("ExpenseEntry receipt input", () => {
       { personId: "navi-id", amountPaise: 5000 },
     ]);
   });
+
+  it("blocks saving an expense older than six months and asks for a corrected date", async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string) => Promise.resolve(new Response(JSON.stringify(url === "/api/groups" ? { groups: [] } : { people: [{ id: "me", name: "Me" }] }), { status: 200 })));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ExpenseEntry initialText="Dinner ₹100" />);
+    fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
+
+    fireEvent.change(await screen.findByLabelText("Date"), { target: { value: "2024-08-07" } });
+    fireEvent.click(screen.getByRole("button", { name: "Only me" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm and save" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Expense date must be within the last 6 months. Correct the date before saving.");
+    expect(fetchMock.mock.calls.some(([url]) => url === "/api/expenses")).toBe(false);
+  });
 });
