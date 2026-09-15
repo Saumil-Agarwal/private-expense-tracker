@@ -90,9 +90,14 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .receipt-items, .allocation-list { list-style: none; padding: 0; margin: 0; }
 .receipt-items li, .allocation-list li { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 10px 0; border-bottom: 1px solid #e8e8df; }
 .receipt-items li:last-child, .allocation-list li:last-child { border-bottom: 0; }
-.participant-summary-list li { padding: 0; }
-.participant-summary-list a { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 16px; padding: 10px 4px; border-radius: 9px; }
+.participant-summary-list li { padding: 0; display: flex; align-items: center; gap: 10px; }
+.participant-summary-list a { display: flex; flex: 1; justify-content: space-between; align-items: center; gap: 16px; padding: 10px 4px; border-radius: 9px; }
 .participant-summary-list a:hover, .participant-summary-list a:focus-visible { background: rgba(255,255,255,.55); outline: 2px solid rgba(85,118,77,.2); }
+.participant-summary-list button { border: 1px solid var(--line); background: rgba(255,255,255,.55); border-radius: 999px; padding: 7px 11px; color: var(--ink); cursor: pointer; }
+.source-progress-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 18px; margin-top: 18px; }
+.source-progress-list label { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 13px; }
+.source-progress-list input { width: 142px; }
+@media (max-width: 620px) { .source-progress-list { grid-template-columns: 1fr; } }
 .receipt-items span { display: flex; align-items: center; gap: 7px; }
 .receipt-items small { color: #466044; background: #eff8df; border-radius: 999px; padding: 3px 6px; }
 .spin { animation: spin 1s linear infinite; }

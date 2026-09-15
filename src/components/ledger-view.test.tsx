@@ -90,4 +90,23 @@ describe("LedgerView reconciliation", () => {
     expect(await screen.findByLabelText("From")).toHaveValue(yearStart);
     expect(fetchMock).toHaveBeenCalledWith(`/api/expenses?from=${yearStart}&to=${today}`);
   });
+
+  it("shows ledger progress and hides a participant after marking them informed", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ transactions: [
+        { id: "1", occurred_on: "2026-09-01", created_at: "2026-09-16T12:00:00.000Z", merchant: "Dinner", amount_paise: 9000, status: "confirmed", categories: null, groups: null, allocations: [{ personId: "person-1", person: "Anish", amount_paise: 9000 }] },
+      ] }), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ sourceProgress: [], participantNotifications: [] }), { status: 200, headers: { "content-type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ informedAt: "2026-09-16T13:00:00.000Z" }), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<LedgerView summary />);
+
+    expect(await screen.findByText("Ledger progress")).toBeInTheDocument();
+    expect(screen.getByLabelText("Cash entered through")).toHaveValue("");
+    fireEvent.click(screen.getByRole("button", { name: "Mark Anish informed" }));
+
+    await vi.waitFor(() => expect(screen.queryByRole("link", { name: /Anish/ })).not.toBeInTheDocument());
+    expect(fetchMock).toHaveBeenLastCalledWith("/api/reconciliation", expect.objectContaining({ method: "POST" }));
+  });
 });

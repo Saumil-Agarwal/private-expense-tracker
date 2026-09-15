@@ -65,7 +65,7 @@ export async function GET(request: Request) {
   try {
     const { userId, supabase } = await getLocalOwnerContext();
     const url = new URL(request.url);
-    let query = supabase.from("transactions").select("id,occurred_on,created_at,merchant,amount_paise,status,deleted_at,categories(name),groups(id,name),allocations(amount_paise,people(name))").eq("user_id", userId);
+    let query = supabase.from("transactions").select("id,occurred_on,created_at,merchant,amount_paise,status,deleted_at,categories(name),groups(id,name),allocations(person_id,amount_paise,people(name))").eq("user_id", userId);
     const from = url.searchParams.get("from"); const to = url.searchParams.get("to");
     query = url.searchParams.get("trash") === "true" ? query.not("deleted_at", "is", null) : query.is("deleted_at", null);
     if (from) query = query.gte("occurred_on", from);
@@ -74,7 +74,7 @@ export async function GET(request: Request) {
     if (!from && !to) query = query.limit(100);
     const { data, error } = await query;
     if (error) throw error;
-    type TransactionRow = { allocations?: Array<{ amount_paise: number; people?: { name: string } | null }>; [key: string]: unknown };
-    return NextResponse.json({ transactions: ((data ?? []) as unknown as TransactionRow[]).map((transaction) => ({ ...transaction, allocations: (transaction.allocations ?? []).map((allocation) => ({ person: allocation.people?.name ?? "Unknown", amount_paise: allocation.amount_paise })) })) });
+    type TransactionRow = { allocations?: Array<{ person_id: string; amount_paise: number; people?: { name: string } | null }>; [key: string]: unknown };
+    return NextResponse.json({ transactions: ((data ?? []) as unknown as TransactionRow[]).map((transaction) => ({ ...transaction, allocations: (transaction.allocations ?? []).map((allocation) => ({ personId: allocation.person_id, person: allocation.people?.name ?? "Unknown", amount_paise: allocation.amount_paise })) })) });
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to load ledger" }, { status: 500 }); }
 }
