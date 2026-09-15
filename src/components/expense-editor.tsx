@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ConfirmedExpenseSchema, rupeesToPaise } from "@/domain/expense";
+import { calculateAllocations } from "@/domain/splits";
 import { GroupPicker, type ExpenseGroup } from "./group-picker";
 import { SplitEditor } from "./split-editor";
 
@@ -49,7 +50,20 @@ export function ExpenseEditor({ expense, onCancel }: { expense: EditableExpense;
     return () => { active = false; };
   }, [expense.groups?.id]);
 
-  function updateItem(key: string, patch: Partial<ItemDraft>) { setItems((current) => current.map((item) => item.key === key ? { ...item, ...patch } : item)); }
+  function updateItem(key: string, patch: Partial<ItemDraft>) {
+    const next = items.map((item) => item.key === key ? { ...item, ...patch } : item);
+    setItems(next);
+    if (patch.personal === undefined && patch.amount === undefined) return;
+    const participants = expense.allocations.map(({ personId, person }) => ({ id: personId, name: person }));
+    const owner = participants.find((person) => person.name.toLowerCase() === "me" || person.id === "me");
+    if (!owner || participants.length < 2) { setSplit({ status: "needs_review", allocations: [] }); return; }
+    try {
+      const personalPaise = next.filter((item) => item.personal).reduce((sum, item) => sum + rupeesToPaise(item.amount || 0), 0);
+      const totalPaise = rupeesToPaise(amount);
+      const result = calculateAllocations({ mode: "shared-remainder", totalPaise, ownerId: owner.id, personalPaise, personIds: participants.map((person) => person.id) });
+      setSplit({ status: "confirmed", allocations: result.allocations });
+    } catch { setSplit({ status: "needs_review", allocations: [] }); }
+  }
 
   async function save() {
     setMessage("");
@@ -87,7 +101,7 @@ export function ExpenseEditor({ expense, onCancel }: { expense: EditableExpense;
         <label>Item name<input aria-label="Item name" value={item.name} onChange={(event) => updateItem(item.key, { name: event.target.value })} /></label>
         <label>Quantity<input aria-label="Item quantity" type="number" min="0.001" step="0.001" value={item.quantity} onChange={(event) => updateItem(item.key, { quantity: event.target.value })} /></label>
         <label>Amount<input aria-label="Item amount" type="number" min="0" step="0.01" value={item.amount} onChange={(event) => updateItem(item.key, { amount: event.target.value })} /></label>
-        <label className="checkbox-label"><input type="checkbox" checked={item.personal} onChange={(event) => updateItem(item.key, { personal: event.target.checked })} />Only me</label>
+        <label className="checkbox-label"><input aria-label={`Only me for ${item.name || "item"}`} type="checkbox" checked={item.personal} onChange={(event) => updateItem(item.key, { personal: event.target.checked })} />Only me</label>
         <button type="button" className="icon-button" aria-label={`Remove ${item.name || "item"}`} onClick={() => setItems((current) => current.filter((currentItem) => currentItem.key !== item.key))}><Trash2 size={16} /></button>
       </div>)}</div>
     </section>

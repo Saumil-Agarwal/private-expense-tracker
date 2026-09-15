@@ -4,6 +4,7 @@ import { type ClipboardEvent, useEffect, useState } from "react";
 import { Camera, Check, ClipboardPaste, LoaderCircle, Sparkles, X } from "lucide-react";
 
 import { ConfirmedExpenseSchema, correctInferredExpenseYear, formatInr, type ExpenseDraft } from "@/domain/expense";
+import { calculateAllocations } from "@/domain/splits";
 import { extractReceiptText } from "@/inference/ocr";
 import { parseExpenseInstruction } from "@/inference/parser";
 import { resolveSplitIntent, type CatalogPerson } from "@/inference/split-intent";
@@ -117,6 +118,22 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
     setImages((current) => [...current, ...pasted].slice(0, 10));
   }
 
+  function updateReceiptItem(index: number, personal: boolean) {
+    if (!receipt || !draft) return;
+    const items = receipt.items.map((item, itemIndex) => itemIndex === index ? { ...item, personal } : item);
+    const people = inferredPeople ?? group?.people ?? receipt.people;
+    const owner = people.find((person) => person.id === "me" || person.name.toLowerCase() === "me");
+    if (!owner || people.length < 2) {
+      setReceipt({ ...receipt, items });
+      setSplit({ status: "needs_review", allocations: [] });
+      return;
+    }
+    const personalPaise = items.filter((item) => item.personal).reduce((sum, item) => sum + item.amountPaise, 0);
+    const result = calculateAllocations({ mode: "shared-remainder", totalPaise: draft.amountPaise, ownerId: owner.id, personalPaise, personIds: people.map((person) => person.id) });
+    setReceipt({ ...receipt, items, allocations: result.allocations, status: "confirmed" });
+    setSplit({ status: "confirmed", allocations: result.allocations });
+  }
+
   async function save() {
     if (!draft) return;
     setMessage(""); setMerchantError("");
@@ -156,8 +173,8 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
       <GroupPicker groups={groups} selectedId={group?.id ?? ""} onCreated={(created) => { setGroups((current) => [...current, created]); setSavedPeople((current) => [...current, ...created.people.filter((person) => !current.some((item) => item.id === person.id))]); }} onSelect={(selectedGroup) => { setGroup(selectedGroup); setInferredPeople(selectedGroup?.people ?? null); setSplit({ status: "needs_review", allocations: [] }); }} />
       {receipt && <section className="form-section receipt-review">
         <div className="section-heading"><div><span className="step">3</span><h2>Receipt items</h2></div><span className="model-badge">Qwen 3.5 9B (local Ollama)</span></div>
-        <ul className="receipt-items">{receipt.items.map((item, index) => <li key={`${item.name}-${index}`}><span>{item.name}{item.personal && <small>Only me</small>}</span><strong>{formatInr(item.amountPaise)}</strong></li>)}</ul>
-        {receipt.allocations.length > 0 && <><h3>Proposed allocation</h3><ul className="allocation-list">{receipt.allocations.map((allocation) => <li key={allocation.personId}><span>{receipt.people.find((person) => person.id === allocation.personId)?.name ?? allocation.personId}</span><strong>{formatInr(allocation.amountPaise)}</strong></li>)}</ul></>}
+        <ul className="receipt-items">{receipt.items.map((item, index) => <li key={`${item.name}-${index}`}><span>{item.name}<label className="checkbox-label"><input aria-label={`Only me for ${item.name}`} type="checkbox" checked={item.personal} onChange={(event) => updateReceiptItem(index, event.target.checked)} />Only me</label></span><strong>{formatInr(item.amountPaise)}</strong></li>)}</ul>
+        {split.allocations.length > 0 && <><h3>Proposed allocation</h3><ul className="allocation-list">{split.allocations.map((allocation) => <li key={allocation.personId}><span>{receipt.people.find((person) => person.id === allocation.personId)?.name ?? allocation.personId}</span><strong>{formatInr(allocation.amountPaise)}</strong></li>)}</ul></>}
       </section>}
       <SplitEditor key={`${draft.amountPaise}-${group?.id ?? "none"}-${(inferredPeople ?? []).map((person) => person.id).join("-")}`} amountPaise={draft.amountPaise} people={inferredPeople ?? group?.people ?? receipt?.people ?? [{ id: "me", name: "Me" }]} availablePeople={savedPeople} initialAllocations={split.allocations} onChange={setSplit} />
       <button className="save-button" type="button" onClick={save} disabled={busy}><Check size={18} />Confirm and save</button>

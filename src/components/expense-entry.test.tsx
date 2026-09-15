@@ -6,6 +6,49 @@ import { ExpenseEntry } from "./expense-entry";
 afterEach(() => vi.unstubAllGlobals());
 
 describe("ExpenseEntry receipt input", () => {
+  it("recalculates every allocation when a receipt item is marked Only me", async () => {
+    const receiptBody = {
+      draft: { merchant: "Grocer", amountPaise: 10000, currency: "INR", date: "2026-09-15", status: "draft", source: "ollama" },
+      items: [
+        { name: "Snacks", amountPaise: 4000, personal: false },
+        { name: "Supplies", amountPaise: 6000, personal: false },
+      ],
+      allocations: [{ personId: "me", amountPaise: 5000 }, { personId: "rahul-id", amountPaise: 5000 }],
+      people: [{ id: "me", name: "Me" }, { id: "rahul-id", name: "Rahul" }],
+      group: null,
+      status: "confirmed",
+      model: "qwen3.5:9b-q4_K_M",
+    };
+    const fetchMock = vi.fn().mockImplementation((url: string) => Promise.resolve(new Response(JSON.stringify(
+      url === "/api/groups" ? { groups: [] } : url === "/api/people" ? { people: receiptBody.people } : url === "/api/expenses" ? { id: "expense-1" } : receiptBody,
+    ), { status: url === "/api/expenses" ? 201 : 200 })));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ExpenseEntry />);
+    const image = new File([new Uint8Array([1])], "receipt.png", { type: "image/png" });
+    fireEvent.paste(screen.getByLabelText("Expense details and split instructions"), {
+      clipboardData: { items: [{ kind: "file", type: "image/png", getAsFile: () => image }] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
+
+    const personalToggle = await screen.findByRole("checkbox", { name: "Only me for Snacks" });
+    fireEvent.click(personalToggle);
+
+    const proposal = screen.getByRole("list", { name: "Proposed split" });
+    expect(within(proposal).getByText("Me").closest("li")).toHaveTextContent("₹70.00");
+    expect(within(proposal).getByText("Rahul").closest("li")).toHaveTextContent("₹30.00");
+    fireEvent.click(personalToggle);
+    expect(within(proposal).getByText("Me").closest("li")).toHaveTextContent("₹50.00");
+    expect(within(proposal).getByText("Rahul").closest("li")).toHaveTextContent("₹50.00");
+    fireEvent.click(personalToggle);
+    fireEvent.click(screen.getByRole("button", { name: "Confirm and save" }));
+    await screen.findByText("Expense saved.");
+    const saveCall = fetchMock.mock.calls.find(([url]) => url === "/api/expenses")!;
+    expect(JSON.parse(saveCall[1]?.body as string)).toMatchObject({
+      allocations: [{ personId: "me", amountPaise: 7000 }, { personId: "rahul-id", amountPaise: 3000 }],
+      items: [{ name: "Snacks", amountPaise: 4000, personal: true }, { name: "Supplies", amountPaise: 6000, personal: false }],
+    });
+  });
+
   it("queues pasted screenshots and creates one combined draft only on command", async () => {
     const receiptBody = {
       draft: { merchant: "Blinkit", amountPaise: 10400, currency: "INR", category: "Groceries", date: "2026-09-07", status: "draft", source: "ollama" },

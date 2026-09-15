@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const push = vi.hoisted(() => vi.fn());
@@ -86,6 +86,39 @@ describe("ExpenseDetail", () => {
       items: [{ name: "Milk", quantity: 2, amountPaise: 10000, personal: true }],
     });
     await vi.waitFor(() => expect(push).toHaveBeenCalledWith("/expenses/expense-1"));
+  });
+
+  it("recalculates the saved split when an item is changed to Only me", async () => {
+    const sharedExpense = {
+      ...expense,
+      amount_paise: 10000,
+      items: [
+        { id: "item-1", name: "Snacks", quantity: 1, amount_paise: 4000, owner: null, owner_person_id: null },
+        { id: "item-2", name: "Supplies", quantity: 1, amount_paise: 6000, owner: null, owner_person_id: null },
+      ],
+      allocations: [{ personId: "me-id", person: "Me", amount_paise: 5000 }, { personId: "rahul-id", person: "Rahul", amount_paise: 5000 }],
+    };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ expense: sharedExpense }), { status: 200 }))
+      .mockImplementation((url: string) => Promise.resolve(new Response(JSON.stringify(
+        url === "/api/groups" ? { groups: [] } : url === "/api/people" ? { people: [{ id: "me-id", name: "Me" }, { id: "rahul-id", name: "Rahul" }] } : { id: "expense-1" },
+      ), { status: 200 })));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ExpenseDetail id="expense-1" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Edit expense" }));
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Only me for Snacks" }));
+
+    const proposal = screen.getByRole("list", { name: "Proposed split" });
+    expect(within(proposal).getByText("Me").closest("li")).toHaveTextContent("₹70.00");
+    expect(within(proposal).getByText("Rahul").closest("li")).toHaveTextContent("₹30.00");
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/expenses/expense-1", expect.objectContaining({ method: "PATCH" })));
+    const call = fetchMock.mock.calls.find(([url, options]) => url === "/api/expenses/expense-1" && options?.method === "PATCH")!;
+    expect(JSON.parse(call[1].body).allocations).toEqual([
+      { personId: "me-id", amountPaise: 7000 },
+      { personId: "rahul-id", amountPaise: 3000 },
+    ]);
   });
 
   it("restores or permanently deletes an archived expense", async () => {
