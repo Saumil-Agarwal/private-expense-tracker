@@ -156,17 +156,21 @@ describe("ExpenseEntry receipt input", () => {
     ]);
   });
 
-  it("blocks saving an expense older than six months and asks for a corrected date", async () => {
-    const fetchMock = vi.fn().mockImplementation((url: string) => Promise.resolve(new Response(JSON.stringify(url === "/api/groups" ? { groups: [] } : { people: [{ id: "me", name: "Me" }] }), { status: 200 })));
+  it("corrects an implausible inferred year and asks the user to check it", async () => {
+    const receipt = {
+      draft: { merchant: "Chinita", amountPaise: 78800, currency: "INR", category: "Restaurants", date: "2024-08-07", status: "draft", source: "ollama" },
+      items: [], allocations: [], people: [{ id: "me", name: "Me" }], group: null, status: "needs_review", model: "qwen3.5:9b-q4_K_M",
+    };
+    const fetchMock = vi.fn().mockImplementation((url: string) => Promise.resolve(new Response(JSON.stringify(url === "/api/groups" ? { groups: [] } : url === "/api/people" ? { people: receipt.people } : receipt), { status: 200 })));
     vi.stubGlobal("fetch", fetchMock);
-    render(<ExpenseEntry initialText="Dinner ₹100" />);
+    render(<ExpenseEntry />);
+    const image = new File([new Uint8Array([1])], "receipt.png", { type: "image/png" });
+    fireEvent.paste(screen.getByLabelText("Expense details and split instructions"), {
+      clipboardData: { items: [{ kind: "file", type: "image/png", getAsFile: () => image }] },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
 
-    fireEvent.change(await screen.findByLabelText("Date"), { target: { value: "2024-08-07" } });
-    fireEvent.click(screen.getByRole("button", { name: "Only me" }));
-    fireEvent.click(screen.getByRole("button", { name: "Confirm and save" }));
-
-    expect(await screen.findByRole("alert")).toHaveTextContent("Expense date must be within the last 6 months. Correct the date before saving.");
-    expect(fetchMock.mock.calls.some(([url]) => url === "/api/expenses")).toBe(false);
+    expect(await screen.findByLabelText("Date")).toHaveValue("2026-08-07");
+    expect(screen.getByText("The extracted year looked incorrect, so it was changed to 2026. Please check the date before saving.")).toBeInTheDocument();
   });
 });

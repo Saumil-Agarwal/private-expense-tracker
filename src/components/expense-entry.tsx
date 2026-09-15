@@ -3,7 +3,7 @@
 import { type ClipboardEvent, useEffect, useState } from "react";
 import { Camera, Check, ClipboardPaste, LoaderCircle, Sparkles, X } from "lucide-react";
 
-import { ConfirmedExpenseSchema, EXPENSE_DATE_RANGE_MESSAGE, formatInr, type ExpenseDraft } from "@/domain/expense";
+import { ConfirmedExpenseSchema, correctInferredExpenseYear, formatInr, type ExpenseDraft } from "@/domain/expense";
 import { extractReceiptText } from "@/inference/ocr";
 import { parseExpenseInstruction } from "@/inference/parser";
 import { resolveSplitIntent, type CatalogPerson } from "@/inference/split-intent";
@@ -21,7 +21,7 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [merchantError, setMerchantError] = useState("");
-  const [dateError, setDateError] = useState("");
+  const [dateWarning, setDateWarning] = useState("");
   const [receipt, setReceipt] = useState<ReceiptResult | null>(null);
   const [images, setImages] = useState<File[]>([]);
   const [group, setGroup] = useState<ExpenseGroup | null>(null);
@@ -29,6 +29,12 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
   const [savedPeople, setSavedPeople] = useState<CatalogPerson[]>([]);
   const [inferredPeople, setInferredPeople] = useState<CatalogPerson[] | null>(null);
   const [catalogWarning, setCatalogWarning] = useState("");
+
+  function withCorrectedInferredYear(nextDraft: ExpenseDraft): ExpenseDraft {
+    const correction = correctInferredExpenseYear(nextDraft.date);
+    setDateWarning(correction.corrected ? `The extracted year looked incorrect, so it was changed to ${correction.date.slice(0, 4)}. Please check the date before saving.` : "");
+    return correction.corrected ? { ...nextDraft, date: correction.date } : nextDraft;
+  }
 
   useEffect(() => {
     let active = true;
@@ -44,7 +50,7 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
 
   function applyTextInference(expenseText: string, parsedDraft?: ExpenseDraft) {
     const result = parseExpenseInstruction(expenseText, parsedDraft?.date ?? new Date().toISOString().slice(0, 10), { groups, people: savedPeople });
-    const nextDraft = parsedDraft ?? result.draft;
+    const nextDraft = withCorrectedInferredYear(parsedDraft ?? result.draft);
     setDraft(nextDraft);
     if (!result.splitIntent) { setGroup(null); setInferredPeople(null); setSplit({ status: "needs_review", allocations: [] }); return; }
     const resolved = resolveSplitIntent(result.splitIntent, nextDraft.amountPaise, { groups, people: savedPeople });
@@ -55,6 +61,7 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
   }
 
   function applyResolvedInference(nextDraft: ExpenseDraft, splitIntent?: Parameters<typeof resolveSplitIntent>[0]) {
+    nextDraft = withCorrectedInferredYear(nextDraft);
     setDraft(nextDraft);
     if (!splitIntent) { setGroup(null); setInferredPeople(null); setSplit({ status: "needs_review", allocations: [] }); return; }
     const resolved = resolveSplitIntent(splitIntent, nextDraft.amountPaise, { groups, people: savedPeople });
@@ -87,7 +94,8 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
       const response = await fetch("/api/inference/receipt", { method: "POST", body: form });
       if (!response.ok) throw new Error((await response.json()).error ?? "Ollama could not read the receipt");
       const result = await response.json() as ReceiptResult;
-      setReceipt(result); setDraft(result.draft);
+      const correctedDraft = withCorrectedInferredYear(result.draft);
+      setReceipt(result); setDraft(correctedDraft);
       setGroup(result.group as ExpenseGroup | null);
       setInferredPeople(result.people);
       setSplit({ status: result.status, allocations: result.allocations });
@@ -111,11 +119,10 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
 
   async function save() {
     if (!draft) return;
-    setMessage(""); setMerchantError(""); setDateError("");
+    setMessage(""); setMerchantError("");
     const parsed = ConfirmedExpenseSchema.safeParse({ ...draft, ...split, groupId: group?.id, items: receipt?.items ?? [] });
     if (!parsed.success) {
       if (parsed.error.issues.some((issue) => issue.path[0] === "merchant")) setMerchantError("Enter a merchant name");
-      else if (parsed.error.issues.some((issue) => issue.path[0] === "date")) setDateError(EXPENSE_DATE_RANGE_MESSAGE);
       else setMessage("Check the highlighted expense details.");
       return;
     }
@@ -123,7 +130,7 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
     try {
       const response = await fetch("/api/expenses", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(parsed.data) });
       if (!response.ok) throw new Error((await response.json()).error ?? "Save failed");
-      setMessage("Expense saved."); setText(""); setDraft(null); setReceipt(null); setImages([]);
+      setMessage("Expense saved."); setText(""); setDraft(null); setReceipt(null); setImages([]); setDateWarning("");
     } catch (error) { setMessage(error instanceof Error ? error.message : "Save failed"); }
     finally { setBusy(false); }
   }
@@ -144,7 +151,7 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
     {draft && <>
       <section className="form-section">
         <div className="section-heading"><div><span className="step">2</span><h2>Check the details</h2></div><strong>{formatInr(draft.amountPaise)}</strong></div>
-        <div className="field-grid"><label>Merchant<input value={draft.merchant} aria-invalid={Boolean(merchantError)} aria-describedby={merchantError ? "merchant-error" : undefined} onChange={(event) => { setDraft({ ...draft, merchant: event.target.value }); setMerchantError(""); }} />{merchantError && <small id="merchant-error" role="alert">{merchantError}</small>}</label><label>Date<input type="date" value={draft.date} aria-invalid={Boolean(dateError)} aria-describedby={dateError ? "date-error" : undefined} onChange={(event) => { setDraft({ ...draft, date: event.target.value }); setDateError(""); }} />{dateError && <small id="date-error" role="alert">{dateError}</small>}</label><label>Category<select value={draft.category ?? ""} onChange={(event) => setDraft({ ...draft, category: event.target.value })}><option value="">Uncategorized</option>{categories.map((category) => <option key={category}>{category}</option>)}</select></label></div>
+        <div className="field-grid"><label>Merchant<input value={draft.merchant} aria-invalid={Boolean(merchantError)} aria-describedby={merchantError ? "merchant-error" : undefined} onChange={(event) => { setDraft({ ...draft, merchant: event.target.value }); setMerchantError(""); }} />{merchantError && <small id="merchant-error" role="alert">{merchantError}</small>}</label><label>Date<input type="date" value={draft.date} onChange={(event) => { setDraft({ ...draft, date: event.target.value }); setDateWarning(""); }} /></label><label>Category<select value={draft.category ?? ""} onChange={(event) => setDraft({ ...draft, category: event.target.value })}><option value="">Uncategorized</option>{categories.map((category) => <option key={category}>{category}</option>)}</select></label></div>
       </section>
       <GroupPicker groups={groups} selectedId={group?.id ?? ""} onCreated={(created) => { setGroups((current) => [...current, created]); setSavedPeople((current) => [...current, ...created.people.filter((person) => !current.some((item) => item.id === person.id))]); }} onSelect={(selectedGroup) => { setGroup(selectedGroup); setInferredPeople(selectedGroup?.people ?? null); setSplit({ status: "needs_review", allocations: [] }); }} />
       {receipt && <section className="form-section receipt-review">
@@ -156,6 +163,7 @@ export function ExpenseEntry({ initialText = "" }: { initialText?: string }) {
       <button className="save-button" type="button" onClick={save} disabled={busy}><Check size={18} />Confirm and save</button>
     </>}
     {message && <p className="form-message" role="status">{message}</p>}
+    {dateWarning && <p className="form-message" role="status">{dateWarning}</p>}
     {catalogWarning && <p className="form-message" role="status">{catalogWarning}</p>}
   </div>;
 }

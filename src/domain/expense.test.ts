@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ConfirmedExpenseSchema, ExpenseDraftSchema, rupeesToPaise } from "./expense";
+import { ConfirmedExpenseSchema, correctInferredExpenseYear, ExpenseDraftSchema, rupeesToPaise } from "./expense";
 
 describe("ExpenseDraftSchema", () => {
   it("accepts an unresolved grocery expense", () => {
@@ -20,11 +20,22 @@ describe("ExpenseDraftSchema", () => {
     expect(() => ExpenseDraftSchema.parse({ merchant: "Cafe", amountPaise: 0, currency: "INR", date: "2026-09-06", status: "draft" })).toThrow();
   });
 
-  it("rejects an expense dated more than six months before filing", () => {
+  it("allows a manually entered historical expense date", () => {
     const result = ExpenseDraftSchema.safeParse({ merchant: "Cafe", amountPaise: 1000, currency: "INR", date: "2024-08-07", status: "draft" });
 
-    expect(result.success).toBe(false);
-    if (!result.success) expect(result.error.flatten().fieldErrors.date).toEqual(["Expense date must be within the last 6 months. Correct the date before saving."]);
+    expect(result.success).toBe(true);
+  });
+
+  it("replaces an implausible inferred year with the current year", () => {
+    expect(correctInferredExpenseYear("2024-08-07", "2026-09-15")).toEqual({ date: "2026-08-07", corrected: true });
+  });
+
+  it("uses the previous year when the current-year date would be in the future", () => {
+    expect(correctInferredExpenseYear("2023-12-07", "2026-01-15")).toEqual({ date: "2025-12-07", corrected: true });
+  });
+
+  it("leaves a plausible inferred date unchanged", () => {
+    expect(correctInferredExpenseYear("2026-08-07", "2026-09-15")).toEqual({ date: "2026-08-07", corrected: false });
   });
 
   it("converts rupees to integer paise", () => {

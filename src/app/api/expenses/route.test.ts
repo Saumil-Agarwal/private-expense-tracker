@@ -26,24 +26,6 @@ describe("POST /api/expenses", () => {
     });
   });
 
-  it("rejects an expense older than six months before accessing the database", async () => {
-    const response = await POST(new Request("http://localhost/api/expenses", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        merchant: "Old dinner", amountPaise: 10000, currency: "INR", date: "2024-08-07",
-        status: "confirmed", source: "manual", allocations: [{ personId: "me", amountPaise: 10000 }],
-      }),
-    }));
-
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: "Invalid expense details",
-      fieldErrors: { date: ["Expense date must be within the last 6 months. Correct the date before saving."] },
-    });
-    expect(getLocalOwnerContext).not.toHaveBeenCalled();
-  });
-
   it("removes a transaction when participant persistence fails", async () => {
     const deleted: string[] = [];
     let peopleWrites = 0;
