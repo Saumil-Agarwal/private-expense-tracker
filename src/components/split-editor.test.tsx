@@ -1,7 +1,9 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SplitEditor } from "./split-editor";
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe("SplitEditor", () => {
   it("emits a personal allocation", () => {
@@ -18,13 +20,15 @@ describe("SplitEditor", () => {
     expect(onChange).toHaveBeenLastCalledWith({ status: "needs_review", allocations: [] });
   });
 
-  it("adds a participant and splits equally", () => {
+  it("adds a persisted participant and splits equally", async () => {
     const onChange = vi.fn();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ person: { id: "rahul-id", name: "Rahul" } }), { status: 201 })));
     render(<SplitEditor amountPaise={10000} people={[{ id: "me", name: "Me" }]} onChange={onChange} />);
     fireEvent.change(screen.getByLabelText("Participant name"), { target: { value: "Rahul" } });
     fireEvent.click(screen.getByRole("button", { name: "Add person" }));
+    expect(await screen.findByRole("checkbox", { name: "Rahul" })).toBeChecked();
     fireEvent.click(screen.getByRole("button", { name: "Split equally" }));
-    expect(onChange).toHaveBeenLastCalledWith({ status: "confirmed", allocations: [{ personId: "me", amountPaise: 5000 }, { personId: "name:Rahul", amountPaise: 5000 }] });
+    expect(onChange).toHaveBeenLastCalledWith({ status: "confirmed", allocations: [{ personId: "me", amountPaise: 5000 }, { personId: "rahul-id", amountPaise: 5000 }] });
   });
 
   it("allows Me to be explicitly excluded from an equal split", () => {

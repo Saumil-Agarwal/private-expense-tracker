@@ -13,6 +13,8 @@ export function SplitEditor({ amountPaise, people, availablePeople = people, ini
   const [newName, setNewName] = useState("");
   const [custom, setCustom] = useState(false);
   const [amounts, setAmounts] = useState<Record<string, string>>(() => Object.fromEntries(initialAllocations.map((allocation) => [allocation.personId, String(allocation.amountPaise / 100)])));
+  const [personError, setPersonError] = useState("");
+  const [addingPerson, setAddingPerson] = useState(false);
   const displayedPeople = [...participants, ...availablePeople.filter((person) => !participants.some((current) => current.id === person.id || current.name.toLowerCase() === person.name.toLowerCase()))];
   function personal() {
     setCustom(false);
@@ -24,14 +26,21 @@ export function SplitEditor({ amountPaise, people, availablePeople = people, ini
     const result = calculateAllocations({ mode: "equal", totalPaise: amountPaise, personIds: displayedPeople.filter((person) => selected.has(person.id)).map((person) => person.id) });
     onChange({ status: "confirmed", allocations: result.allocations });
   }
-  function addPerson() {
+  async function addPerson() {
     const name = newName.trim();
     if (!name || participants.some((person) => person.name.toLowerCase() === name.toLowerCase())) return;
-    const person = { id: `name:${name}`, name };
-    setParticipants([...participants, person]);
-    setSelected((current) => new Set(current).add(person.id));
-    setNewName("");
-    onChange({ status: "needs_review", allocations: [] });
+    setAddingPerson(true); setPersonError("");
+    try {
+      const response = await fetch("/api/people", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Person could not be saved");
+      const person = body.person as Person;
+      setParticipants((current) => current.some((item) => item.id === person.id) ? current : [...current, person]);
+      setSelected((current) => new Set(current).add(person.id));
+      setNewName("");
+      onChange({ status: "needs_review", allocations: [] });
+    } catch (error) { setPersonError(error instanceof Error ? error.message : "Person could not be saved"); }
+    finally { setAddingPerson(false); }
   }
   function updateExact(personId: string, value: string) {
     const next = { ...amounts, [personId]: value };
@@ -51,7 +60,8 @@ export function SplitEditor({ amountPaise, people, availablePeople = people, ini
         <button type="button" onClick={() => onChange({ status: "needs_review", allocations: [] })}>Decide later</button>
       </div>
       {initialAllocations.length > 0 && <ul className="allocation-list" aria-label="Proposed split">{initialAllocations.map((allocation) => <li key={allocation.personId}><span>{participants.find((person) => person.id === allocation.personId)?.name ?? allocation.personId}</span><strong>{formatInr(allocation.amountPaise)}</strong></li>)}</ul>}
-      <div className="participant-row"><label>Participant name<input value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="Rahul" /></label><button type="button" className="button-quiet" onClick={addPerson}>Add person</button></div>
+      <div className="participant-row"><label>Participant name<input value={newName} onChange={(event) => setNewName(event.target.value)} placeholder="Rahul" /></label><button type="button" className="button-quiet" disabled={addingPerson} onClick={() => void addPerson()}>{addingPerson ? "Adding…" : "Add person"}</button></div>
+      {personError && <p className="form-message" role="alert">{personError}</p>}
       <div className="people-chips">{displayedPeople.map((person) => <label key={person.id}><input type="checkbox" checked={selected.has(person.id)} onChange={() => { setSelected((current) => { const next = new Set(current); if (next.has(person.id)) next.delete(person.id); else next.add(person.id); return next; }); onChange({ status: "needs_review", allocations: [] }); }} />{person.name}</label>)}</div>
       {custom && <div className="custom-split">{displayedPeople.filter((person) => selected.has(person.id)).map((person) => <label key={person.id}>{person.name}<input inputMode="decimal" value={amounts[person.id] ?? ""} onChange={(event) => updateExact(person.id, event.target.value)} placeholder="0.00" /></label>)}</div>}
     </section>

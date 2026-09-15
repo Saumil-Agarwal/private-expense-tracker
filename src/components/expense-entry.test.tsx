@@ -127,4 +127,32 @@ describe("ExpenseEntry receipt input", () => {
     const saveCall = fetchMock.mock.calls.find(([url]) => url === "/api/expenses")!;
     expect(JSON.parse(saveCall[1]?.body as string)).toMatchObject({ status: "needs_review", allocations: [] });
   });
+
+  it("persists a newly added person and uses their database ID in the split", async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url === "/api/groups") return Promise.resolve(new Response(JSON.stringify({ groups: [] }), { status: 200 }));
+      if (url === "/api/people" && init?.method === "POST") return Promise.resolve(new Response(JSON.stringify({ person: { id: "navi-id", persistedId: "navi-id", name: "Navi" } }), { status: 201 }));
+      if (url === "/api/people") return Promise.resolve(new Response(JSON.stringify({ people: [{ id: "me", name: "Me" }] }), { status: 200 }));
+      return Promise.resolve(new Response(JSON.stringify({ id: "expense-1" }), { status: 201 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ExpenseEntry initialText="Dinner ₹100" />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/people"));
+    fireEvent.click(screen.getByRole("button", { name: "Create draft" }));
+
+    fireEvent.change(await screen.findByLabelText("Participant name"), { target: { value: "Navi" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add person" }));
+    expect(await screen.findByRole("checkbox", { name: "Navi" })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Split equally" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm and save" }));
+
+    await screen.findByText("Expense saved.");
+    const personCall = fetchMock.mock.calls.find(([url, init]) => url === "/api/people" && init?.method === "POST")!;
+    expect(JSON.parse(personCall[1]?.body as string)).toEqual({ name: "Navi" });
+    const saveCall = fetchMock.mock.calls.find(([url]) => url === "/api/expenses")!;
+    expect(JSON.parse(saveCall[1]?.body as string).allocations).toEqual([
+      { personId: "me", amountPaise: 5000 },
+      { personId: "navi-id", amountPaise: 5000 },
+    ]);
+  });
 });

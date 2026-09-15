@@ -68,4 +68,16 @@ describe("LedgerView reconciliation", () => {
     expect(await screen.findByText("Totals need attention")).toBeInTheDocument();
     expect(screen.getByText("Dinner").closest("article")).toHaveTextContent("Mismatch by ₹0.01");
   });
+
+  it("opens the overview with a year-to-date date range", async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const yearStart = `${today.slice(0, 4)}-01-01`;
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ transactions: [] }), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<LedgerView summary />);
+
+    expect(await screen.findByLabelText("From")).toHaveValue(yearStart);
+    expect(fetchMock).toHaveBeenCalledWith(`/api/expenses?from=${yearStart}&to=${today}`);
+  });
 });

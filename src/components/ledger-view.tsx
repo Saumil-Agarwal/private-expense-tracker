@@ -10,7 +10,7 @@ function isoToday() { return new Date().toISOString().slice(0, 10); }
 
 export function LedgerView({ summary = false, trash = false }: { summary?: boolean; trash?: boolean }) {
   const today = isoToday();
-  const [from, setFrom] = useState(`${today.slice(0, 8)}01`); const [to, setTo] = useState(today);
+  const [from, setFrom] = useState(`${today.slice(0, 4)}-01-01`); const [to, setTo] = useState(today);
   const [transactions, setTransactions] = useState<Transaction[]>([]); const [error, setError] = useState(""); const [loading, setLoading] = useState(true);
   const [actingId, setActingId] = useState<string | null>(null);
   const load = useCallback(async () => {
