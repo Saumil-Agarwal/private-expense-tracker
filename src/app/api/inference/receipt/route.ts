@@ -16,6 +16,7 @@ const CATEGORIES = ["Restaurants", "Uber", "Groceries", "Amazon groceries", "Int
 const OllamaReceiptSchema = z.object({
   merchant: z.string().trim().min(1),
   totalRupees: z.number().positive(),
+  date: z.iso.date().nullable().default(null),
   category: z.string().trim().min(1),
   items: z.array(z.object({ name: z.string().trim().min(1), amountRupees: z.number().nonnegative(), personal: z.boolean() })).min(1),
   groupName: z.string().trim().nullable(),
@@ -29,6 +30,7 @@ const receiptJsonSchema = {
   properties: {
     merchant: { type: "string" },
     totalRupees: { type: "number" },
+    date: { anyOf: [{ type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" }, { type: "null" }] },
     category: { type: "string", enum: CATEGORIES },
     items: {
       type: "array",
@@ -47,7 +49,7 @@ const receiptJsonSchema = {
     splitMode: { type: "string", enum: ["equal", "exact", "percentage", "unresolved"] },
     shares: { type: "array", items: { type: "object", properties: { personName: { type: "string" }, value: { type: "number" } }, required: ["personName", "value"] } },
   },
-  required: ["merchant", "totalRupees", "category", "items", "groupName", "participantNames", "splitMode", "shares"],
+  required: ["merchant", "totalRupees", "date", "category", "items", "groupName", "participantNames", "splitMode", "shares"],
 };
 
 export async function POST(request: Request) {
@@ -81,6 +83,7 @@ export async function POST(request: Request) {
     const prompt = [
       `Read these ${images.length} screenshot(s) as parts of one expense and return one JSON object matching the supplied schema.`,
       "Report amounts in rupees exactly as displayed, including decimals. Use final charged prices, not crossed-out list prices.",
+      "Set date to the expense or transaction date visible in the screenshots in YYYY-MM-DD format. If no date is visible, set date to null.",
       "If the merchant is not visible, use Unspecified merchant; never invent one.",
       "Every purchased line item must appear exactly once. The item amounts must add up to totalRupees.",
       `Category must be one of: ${CATEGORIES.join(", ")}.`,
@@ -116,7 +119,7 @@ export async function POST(request: Request) {
       splitMode: ollamaReceipt.splitMode,
       shares: ollamaReceipt.shares,
     };
-    return NextResponse.json(buildReceiptResult(extracted, new Date().toISOString().slice(0, 10), catalog, MODEL));
+    return NextResponse.json(buildReceiptResult(extracted, ollamaReceipt.date ?? new Date().toISOString().slice(0, 10), catalog, MODEL));
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Unknown error";
     const unavailable = /fetch failed|ECONNREFUSED|Ollama returned/.test(detail);

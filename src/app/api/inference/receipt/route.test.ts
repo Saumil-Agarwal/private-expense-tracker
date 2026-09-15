@@ -26,6 +26,7 @@ describe("POST /api/inference/receipt", () => {
       message: { content: JSON.stringify({
         merchant: "Blinkit",
         totalRupees: 104,
+        date: "2026-09-07",
         category: "Groceries",
         items: [
           { name: "Parle-G Gold Biscuits", amountRupees: 10, personal: true },
@@ -53,12 +54,15 @@ describe("POST /api/inference/receipt", () => {
       { personId: "sanjeev-id", amountPaise: 2800 },
     ]);
     expect(body.group.id).toBe("11111111-1111-4111-8111-111111111111");
+    expect(body.draft.date).toBe("2026-09-07");
     expect(body.model).toBe("qwen3.5:9b-q4_K_M");
     const ollamaRequest = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string);
     expect(ollamaRequest.messages[0].images).toHaveLength(1);
     expect(ollamaRequest.messages[0].content).toContain("Flatmates: Me, Anish, Sanjeev");
     expect(ollamaRequest.messages[0].content).not.toContain("anish-id");
     expect(ollamaRequest.messages[0].content).toContain("participantNames");
+    expect(ollamaRequest.messages[0].content).toContain("date visible in the screenshots");
+    expect(ollamaRequest.format.properties).toHaveProperty("date");
     expect(ollamaRequest.format.properties).toHaveProperty("splitMode");
   });
 
